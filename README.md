@@ -21,16 +21,24 @@ Then open http://localhost:5173.
 
 ## Controls
 
+WASD rides the bike, the arrow cluster rotates it.
+
 | | |
 |---|---|
 | `W` / `S` | Throttle / brake (hold `S` at a standstill to reverse) |
-| `A` `D` or `←` `→` | Steer on the ground, spin in the air |
+| `A` `D` | Steer on the ground, spin in the air |
 | `↓` / `↑` | Lean back / forward — pull back to loop backwards |
-| `Q` / `E` | Barrel roll |
+| `←` / `→` | Barrel roll (`Q` / `E` still work too) |
+| `Space` | Jump |
 | `R` | Respawn |
 | `H` | Show/hide the tuning panel |
 
-A gamepad works too: triggers for throttle and brake, left stick to steer and pitch, bumpers to roll.
+A gamepad works too: triggers for throttle and brake, left stick to steer and pitch, bumpers to roll,
+`A` to jump.
+
+The jump is a bunny hop that spends whatever the suspension has stored, so one taken just after a
+compression goes noticeably higher than one from a settled bike — about 1.3 m flat, 1.6 m loaded. You
+get exactly one per ground contact, so it can't be mashed into a hover.
 
 ## Current state: M1
 

@@ -26,6 +26,7 @@ const idle = (): InputState => ({
   steer: 0,
   pitch: 0,
   roll: 0,
+  jump: false,
   respawn: false,
 });
 
@@ -277,7 +278,59 @@ console.log(
   console.log(`        impact speed ${peakImpact.toFixed(1)} m/s\n`);
 }
 
-// --- 4. long random session -----------------------------------------------
+// --- 4. spacebar jump ------------------------------------------------------
+{
+  /** Settle on the spawn pad, pulse jump for one step, then observe. */
+  function hop(holdJumpInAir: boolean) {
+    const s = createBikeState();
+    resetBike(s, hf);
+    const input = idle();
+    for (let i = 0; i < 120; i++) stepBike(s, hf, input, STEP);
+    const restY = s.pos.y;
+
+    // Exactly one step of jump — the same single frame the edge-triggered input
+    // delivers for a key press.
+    input.jump = true;
+    stepBike(s, hf, input, STEP);
+    input.jump = holdJumpInAir;
+
+    let peak = 0;
+    let airSteps = 0;
+    let landedAfter = -1;
+    for (let i = 0; i < 600; i++) {
+      stepBike(s, hf, input, STEP);
+      peak = Math.max(peak, s.pos.y - restY);
+      if (!s.grounded) airSteps++;
+      else if (airSteps > 10 && landedAfter < 0) landedAfter = i * STEP;
+    }
+    return { peak, landedAfter, airSteps };
+  }
+
+  const single = hop(false);
+  check('spacebar gets the bike airborne', single.peak > 0.8, `peak ${single.peak.toFixed(2)} m`);
+  check(
+    'jump height stays in a sane band',
+    single.peak < 3,
+    `peak ${single.peak.toFixed(2)} m, ${(single.airSteps * STEP).toFixed(2)} s of air`,
+  );
+  check(
+    'and comes back down',
+    single.landedAfter > 0,
+    single.landedAfter > 0 ? `landed after ${single.landedAfter.toFixed(2)} s` : 'never landed',
+  );
+
+  // The invariant that matters: one jump per ground contact. Holding the key
+  // through the air must not stack a second impulse on the first.
+  const held = hop(true);
+  check(
+    'cannot double jump in mid-air',
+    Math.abs(held.peak - single.peak) < 0.05,
+    `held ${held.peak.toFixed(2)} m vs pulsed ${single.peak.toFixed(2)} m`,
+  );
+  console.log('');
+}
+
+// --- 5. long random session -----------------------------------------------
 {
   // Deterministic pseudo-random rider, changing input four times a second.
   let seed = 20260812;

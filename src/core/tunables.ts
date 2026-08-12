@@ -44,6 +44,18 @@ export const DEFAULTS = {
     slopeGain: 0.85,
     /** Per-second decay of sideways velocity. High = the bike rails. */
     lateralGrip: 7,
+    /**
+     * Bunny hop. At gravity 16 an impulse of 6.5 m/s is about 1.3 m of air —
+     * enough to clear something or to set up a rotation, not enough to replace
+     * the ramps M2 brings.
+     */
+    jumpImpulse: 6.5,
+    /**
+     * Extra impulse at full suspension compression. A hop taken just after a
+     * landing spends stored spring energy and goes noticeably higher, which makes
+     * the timing worth learning.
+     */
+    jumpPreload: 3,
     wheelBase: 1.45,
     wheelRadius: 0.33,
     /** Lateral offset used to read terrain cross-slope for roll. */

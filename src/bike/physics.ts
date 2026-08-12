@@ -87,8 +87,11 @@ export function stepBike(s: BikeState, hf: Heightfield, input: InputState, dt: n
   // Gravity is unconditional; the spring provides the normal force.
   s.vel.y -= b.gravity * dt;
 
-  if (s.grounded && !wasGrounded && s.vel.y < 0) {
-    s.lastImpact = Math.max(s.lastImpact, -s.vel.y);
+  if (s.grounded && !wasGrounded) {
+    if (s.vel.y < 0) s.lastImpact = Math.max(s.lastImpact, -s.vel.y);
+    // Re-arm on landing rather than on a timer: one hop per ground contact, no
+    // matter how the key is held or mashed.
+    s.jumpArmed = true;
   }
 
   if (s.grounded) {
@@ -120,6 +123,18 @@ export function stepBike(s: BikeState, hf: Heightfield, input: InputState, dt: n
       // back down on its own. Drive and steering keep working, so cresting a
       // small bump doesn't cut the throttle.
       s.susp *= Math.exp(-10 * dt);
+    }
+
+    // ---- jump -------------------------------------------------------------
+    if (input.jump && s.jumpArmed) {
+      // Spends whatever the suspension currently has stored, so a hop taken just
+      // after a compression goes higher than one from a settled bike.
+      const preload = su.maxTravel > 0 ? Math.min(1, s.susp / su.maxTravel) : 0;
+      // Clamped rather than added, so hopping while already dropping still gives
+      // a predictable height instead of being eaten by downward velocity.
+      s.vel.y = Math.max(0, s.vel.y) + b.jumpImpulse + preload * b.jumpPreload;
+      s.susp = 0;
+      s.jumpArmed = false;
     }
 
     // ---- gravity along the slope -----------------------------------------

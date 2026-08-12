@@ -213,20 +213,29 @@ Spring-arm chase camera, the piece most responsible for whether air feels big:
 
 ## 8. Controls
 
+WASD rides, the arrow cluster rotates. Keeping the two jobs on separate hands means no chord is ever
+needed to fly the bike.
+
 | Action | Keyboard | Gamepad |
 |---|---|---|
 | Throttle | W | RT |
 | Brake / reverse | S | LT |
-| Steer | A D / ← → | Left stick X |
+| Steer (spin in air) | A D | Left stick X |
 | Lean back (backflip) | ↓ or K | Left stick back |
 | Lean forward (frontflip) | ↑ or I | Left stick forward |
-| Barrel roll | Q / E | Bumpers |
-| Trick pose *(M3)* | Space, 1–4 | A / B / X / Y |
+| Barrel roll | ← → (or Q / E) | Bumpers |
+| Jump | Space | A |
+| Trick pose *(M3)* | 1–4 | B / X / Y |
 | Respawn | R | Start |
 | Tuning panel | H | — |
 
 Pitch is on the vertical axis rather than a modifier chord: pull back to loop backwards, which is
 the convention every MX game uses and the only one that survives being played rather than read.
+
+**Jump** is a bunny hop, scaled by stored suspension compression (§4) — one per ground contact,
+re-armed on landing rather than on a timer, so a held or mashed key can't hover. It overlaps with the
+preload/pop mechanic below, and the two should probably merge in M3: hold Space to crouch, release at
+the lip to pop. That also frees the trick poses to sit on 1–4 alone.
 
 Input is polled into a normalized `InputState` each physics step, never read directly in physics
 code — keeps the door open for replays and ghost recording.

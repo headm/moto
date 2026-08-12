@@ -16,6 +16,8 @@ export interface InputState {
   pitch: number;
   /** -1 (roll left) .. 1 (roll right) */
   roll: number;
+  /** True for exactly one frame after the jump key is pressed. */
+  jump: boolean;
   /** True for exactly one frame after the respawn key is pressed. */
   respawn: boolean;
 }
@@ -35,6 +37,7 @@ export class Input {
     steer: 0,
     pitch: 0,
     roll: 0,
+    jump: false,
     respawn: false,
   };
 
@@ -43,6 +46,8 @@ export class Input {
 
   private keys = new Set<string>();
   private respawnEdge = false;
+  private jumpEdge = false;
+  private padJumpWasDown = false;
   private gamepadIndex: number | null = null;
 
   constructor() {
@@ -67,6 +72,8 @@ export class Input {
     if (e.code.startsWith('Arrow') || e.code === 'Space') e.preventDefault();
     if (!this.keys.has(e.code)) {
       if (e.code === 'KeyR') this.respawnEdge = true;
+      // Edge-triggered, so holding the key down is one jump, not a hover.
+      if (e.code === 'Space') this.jumpEdge = true;
       this.onAnyKey?.();
     }
     this.keys.add(e.code);
@@ -99,10 +106,13 @@ export class Input {
 
     s.throttle = this.held('KeyW');
     s.brake = this.held('KeyS');
-    s.steer = this.held('KeyD', 'ArrowRight') - this.held('KeyA', 'ArrowLeft');
+    // WASD rides, the arrow cluster rotates: up/down pitches, left/right rolls.
+    s.steer = this.held('KeyD') - this.held('KeyA');
     // Pull back to loop backwards, like every MX game ever made.
     s.pitch = this.held('ArrowDown', 'KeyK') - this.held('ArrowUp', 'KeyI');
-    s.roll = this.held('KeyE') - this.held('KeyQ');
+    s.roll = this.held('ArrowRight', 'KeyE') - this.held('ArrowLeft', 'KeyQ');
+    s.jump = this.jumpEdge;
+    this.jumpEdge = false;
     s.respawn = this.respawnEdge;
     this.respawnEdge = false;
 
@@ -126,6 +136,11 @@ export class Input {
 
     const rollAxis = (pad.buttons[5]?.pressed ? 1 : 0) - (pad.buttons[4]?.pressed ? 1 : 0);
     if (rollAxis !== 0) s.roll = rollAxis;
+
+    // A button, edge-detected here since gamepads are polled rather than evented.
+    const padJump = pad.buttons[0]?.pressed ?? false;
+    if (padJump && !this.padJumpWasDown) s.jump = true;
+    this.padJumpWasDown = padJump;
 
     if (pad.buttons[9]?.pressed) s.respawn = true;
   }

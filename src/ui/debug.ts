@@ -45,6 +45,8 @@ export function buildGui(cb: DebugCallbacks): GUI {
   bike.add(T.bike, 'rollDrag', 0, 1.5, 0.01);
   bike.add(T.bike, 'slopeGain', 0, 2, 0.01);
   bike.add(T.bike, 'lateralGrip', 0.5, 20, 0.1);
+  bike.add(T.bike, 'jumpImpulse', 0, 20, 0.1);
+  bike.add(T.bike, 'jumpPreload', 0, 12, 0.1);
   bike.add(T.bike, 'wheelBase', 0.8, 2.5, 0.01);
 
   const susp = gui.addFolder('Suspension').close();

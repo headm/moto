@@ -28,6 +28,11 @@ export interface BikeState {
   susp: number;
 
   grounded: boolean;
+  /**
+   * Whether a jump is available. Set on every landing and spent on jumping, so
+   * you get exactly one hop per ground contact however the key is held or mashed.
+   */
+  jumpArmed: boolean;
   airTime: number;
   groundTime: number;
   /** Peak airborne height above the ground below, metres. */
@@ -55,6 +60,7 @@ export function createBikeState(): BikeState {
     wheelRate: 0,
     susp: 0,
     grounded: true,
+    jumpArmed: true,
     airTime: 0,
     groundTime: 0,
     airPeak: 0,
@@ -79,6 +85,7 @@ export function resetBike(s: BikeState, hf: Heightfield) {
   s.wheelRate = 0;
   s.susp = 0;
   s.grounded = true;
+  s.jumpArmed = true;
   s.airTime = 0;
   s.groundTime = 0;
   s.airPeak = 0;
