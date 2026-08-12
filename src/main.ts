@@ -5,6 +5,8 @@ import { Input } from './core/input';
 import { Heightfield } from './world/heightfield';
 import { buildTerrainMesh, type Terrain } from './world/terrainMesh';
 import { createSky, updateSky, applyLighting } from './world/sky';
+import { applyPark } from './world/ramps';
+import { PARK } from './world/park';
 import { createBikeState, resetBike, groundSpeed } from './bike/state';
 import { stepBike } from './bike/physics';
 import { createBikeModel, syncBikeModel, lerpAngle } from './bike/model';
@@ -38,7 +40,13 @@ const sky = createSky(scene, T.render.fogDensity);
 
 // ---- world -----------------------------------------------------------------
 
-let hf = new Heightfield(T.world);
+function buildWorld(): Heightfield {
+  const field = new Heightfield(T.world);
+  if (T.world.ramps) applyPark(field, PARK);
+  return field;
+}
+
+let hf = buildWorld();
 let terrain: Terrain = buildTerrainMesh(hf, T.world.meshStride);
 scene.add(terrain.mesh);
 
@@ -72,7 +80,7 @@ function applyRender() {
 function regenerateWorld() {
   scene.remove(terrain.mesh);
   terrain.dispose();
-  hf = new Heightfield(T.world);
+  hf = buildWorld();
   terrain = buildTerrainMesh(hf, T.world.meshStride);
   scene.add(terrain.mesh);
   applyRender();

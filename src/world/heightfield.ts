@@ -71,6 +71,8 @@ export class Heightfield {
   readonly half: number;
   readonly seed: number;
   readonly data: Float32Array;
+  /** 1 where a ramp stamp has groomed the surface, for shading. */
+  readonly mark: Uint8Array;
   /** Level pad the bike starts on, facing the bowl. */
   readonly spawn = new THREE.Vector3();
   readonly spawnYaw = Math.PI;
@@ -85,6 +87,7 @@ export class Heightfield {
     this.cell = cfg.size / (cfg.res - 1);
     this.half = cfg.size / 2;
     this.data = new Float32Array(cfg.res * cfg.res);
+    this.mark = new Uint8Array(cfg.res * cfg.res);
     this.generate();
   }
 

@@ -121,6 +121,7 @@ export function buildGui(cb: DebugCallbacks): GUI {
   world.add(T.world, 'rollAmp', 0, 12, 0.05);
   world.add(T.world, 'fineAmp', 0, 5, 0.05);
   world.add(T.world, 'bowlDepth', 0, 40, 0.5);
+  world.add(T.world, 'ramps').name('ramps (regen to apply)');
   world.add({ regenerate: cb.regenerateWorld }, 'regenerate').name('Regenerate terrain');
 
   const light = gui.addFolder('Light').close();

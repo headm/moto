@@ -12,10 +12,17 @@ export const DEFAULTS = {
     seed: 1337,
     /** World is a square this many metres on a side, centred on the origin. */
     size: 1024,
-    /** Heightfield samples per side. (res - 1) must be divisible by meshStride. */
-    res: 513,
+    /**
+     * Heightfield samples per side. (res - 1) must be divisible by meshStride.
+     * 1025 gives 1 m cells. Ramps need it: at 2 m the final span before a lip is
+     * a single bilinear interpolation, which rounds off the one feature that the
+     * whole jump depends on.
+     */
+    res: 1025,
     /** Render one terrain quad per this many heightfield cells. */
-    meshStride: 2,
+    meshStride: 4,
+    /** Stamp the park's features into the heightfield. */
+    ramps: true,
     broadAmp: 16,
     midAmp: 6,
     /**

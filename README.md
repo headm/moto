@@ -54,11 +54,25 @@ The jump is a bunny hop that spends whatever the suspension has stored, so one t
 compression goes noticeably higher than one from a settled bike — about 1.3 m flat, 1.6 m loaded. You
 get exactly one per ground contact, so it can't be mashed into a hover.
 
-## Current state: M2 — landings
+## Current state: M3 — a proving strip of ramps
 
-Riding works, and landings are now rated. Terrain, suspension, steering, lean, air rotation, jump,
-boost, landing feedback and the chase camera are in. There are no ramps, no tricks and no scoring
-yet — those are M3 and M4.
+Riding works, landings are rated, and there are ramps. Terrain, suspension, steering, lean, air
+rotation, jump, boost, landing feedback, the chase camera and a first set of features are in. There
+are no tricks and no scoring yet — that's M4.
+
+Five features run in a straight line from the spawn pad toward the bowl: warmup whoops, a first
+kicker, a tabletop, a big-air ramp, and a hip off to the right. Just hold `W` and you meet all of
+them in order. Boost the big one — it gives about 2 s of air and 11 m of height, which is enough
+time for a full backflip.
+
+Ramps are height *stamps* written into the same heightfield as the terrain, so ground contact stays
+an O(1) sample: no meshes, no colliders, nothing to desync. They mask-*blend* rather than add, which
+levels a feature onto whatever it sits on so the same kicker launches identically anywhere. Each one
+also carves a level approach corridor, so you never hit a lip off-camber. Edit `src/world/park.ts`
+to move things around — it's plain data — then `Regenerate terrain` in the panel, or reload.
+
+`npm run sim` validates the park: it rides every feature at base and boosted speed and reports air
+time, height and the landing band, so an unclearable gap shows up before you ever ride it.
 
 **Landings are never fatal.** There is no crash and no respawn: the bike always snaps back upright
 and carries on. Every landing over 0.25 s of air gets rated on the angle between the bike and the

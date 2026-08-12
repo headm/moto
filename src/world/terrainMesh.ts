@@ -13,6 +13,8 @@ const DIRT = new THREE.Color('#b58a55');
 const PACKED = new THREE.Color('#8a6b45');
 const ROCK = new THREE.Color('#6b6560');
 const SCRUB = new THREE.Color('#6f7a44');
+/** Worked dirt on ramp faces, decks and approaches — reads as built, not natural. */
+const GROOMED = new THREE.Color('#a06a42');
 
 const cA = new THREE.Vector3();
 const cB = new THREE.Vector3();
@@ -27,10 +29,20 @@ function triJitter(i: number, j: number): number {
   return ((h >>> 0) / 4294967296) * 2 - 1;
 }
 
-function shadeTriangle(normalY: number, scrub: number, jitter: number, out: THREE.Color) {
+function shadeTriangle(
+  normalY: number,
+  scrub: number,
+  jitter: number,
+  groomed: boolean,
+  out: THREE.Color,
+) {
   const slope = 1 - normalY;
 
-  if (slope > 0.45) {
+  if (groomed) {
+    // Ramps are shaped dirt: no scrub, and they darken as they steepen so a lip
+    // reads against its own approach.
+    out.copy(GROOMED).lerp(PACKED, Math.min(1, slope / 0.5) * 0.55);
+  } else if (slope > 0.45) {
     out.copy(ROCK);
   } else if (slope > 0.22) {
     // Dune faces pack down and get rockier as they steepen.
@@ -60,7 +72,7 @@ export interface Terrain {
 }
 
 export function buildTerrainMesh(hf: Heightfield, stride: number): Terrain {
-  const { res, cell, half, data } = hf;
+  const { res, cell, half, data, mark } = hf;
   const quads = Math.floor((res - 1) / stride);
   const quadSize = cell * stride;
   const triCount = quads * quads * 2;
@@ -81,6 +93,7 @@ export function buildTerrainMesh(hf: Heightfield, stride: number): Terrain {
     y2: number,
     z2: number,
     jitter: number,
+    groomed: boolean,
   ) => {
     cA.set(x1 - x0, y1 - y0, z1 - z0);
     cB.set(x2 - x0, y2 - y0, z2 - z0);
@@ -93,7 +106,7 @@ export function buildTerrainMesh(hf: Heightfield, stride: number): Terrain {
     const fine = sampleNoise(cx / 46, cz / 46, hf.seed + 12);
     const scrub = smoothstep(0.5, 0.85, broad * 0.65 + fine * 0.35);
 
-    shadeTriangle(Math.abs(nrm.y), scrub, jitter, col);
+    shadeTriangle(Math.abs(nrm.y), scrub, jitter, groomed, col);
 
     positions[p] = x0; positions[p + 1] = y0; positions[p + 2] = z0;
     positions[p + 3] = x1; positions[p + 4] = y1; positions[p + 5] = z1;
@@ -122,9 +135,16 @@ export function buildTerrainMesh(hf: Heightfield, stride: number): Terrain {
       const yd = data[(gj + stride) * res + gi + stride];
 
       const jitter = triJitter(gi, gj);
+      // A quad counts as groomed if any of its corners were stamped, so a feature
+      // edge doesn't shred into a checkerboard at this mesh stride.
+      const groomed =
+        mark[gj * res + gi] === 1 ||
+        mark[gj * res + gi + stride] === 1 ||
+        mark[(gj + stride) * res + gi] === 1 ||
+        mark[(gj + stride) * res + gi + stride] === 1;
       // Winding (a, c, b) and (b, c, d) both give upward normals.
-      emit(x0, ya, z0, x0, yc, z1, x1, yb, z0, jitter);
-      emit(x1, yb, z0, x0, yc, z1, x1, yd, z1, -jitter);
+      emit(x0, ya, z0, x0, yc, z1, x1, yb, z0, jitter, groomed);
+      emit(x1, yb, z0, x0, yc, z1, x1, yd, z1, -jitter, groomed);
     }
   }
 

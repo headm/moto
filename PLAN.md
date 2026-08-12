@@ -40,6 +40,7 @@ src/
   world/
     heightfield.ts        the terrain data model + h(x,z) and normal(x,z) sampling
     ramps.ts              ramp/kicker/gap definitions as height "stamps"
+    park.ts               the feature layout, as plain data
     terrainMesh.ts        heightfield → BufferGeometry with slope-based vertex colors
     scatter.ts            instanced rocks, shrubs, banners, markers
     sky.ts                gradient sky, fog, sun, hemisphere light
@@ -299,7 +300,28 @@ slope can't be sized without knowing what counts as clean — and the jump plus 
 already supply enough air to tune against. Tolerance is also about *angles*, not altitude, so a
 bunny hop can present the system with a 180 deg error just as well as a tabletop can.
 
-**M3 — Ramps (~1.5 days).** Heightfield to 1 m cells (`res: 1025`, `meshStride` 4 to hold the
+**M3 — Ramps (~1.5 days). Proving strip done.** Heightfield at 1 m cells, mask-blend stamps with
+approach corridors, kicker/tabletop/rollers, five features in `park.ts`, and a validator that rides
+every one at base and boosted speed. Remaining: berms, step-ups, and the full loop park.
+
+Four things this turned up, all of which change the sketch below:
+
+1. **Blend widths are bounded by the mesh, not the heightfield.** At `meshStride` 4 the rendered
+   quads are 4 m, so the original 3 m lateral fade was narrower than a single quad and rendered as a
+   cliff along the corridor edge. Fades need to span several quads — 14 m lateral, 8 m longitudinal.
+2. **A ramp kicks harder than an ideal projectile.** The suspension releases at the lip, so measured
+   apex ran 4.2 m where `launchRange` predicted 2.6 m. Sizing a landing from the ballistic formula
+   alone puts the touchdown past the level part and onto the taper, which reads as an off-angle
+   landing. The level section has to cover the *measured* range.
+3. **A long levelled landing becomes a raised causeway** where terrain falls away. Tapering the
+   stamp *weight* over the trailing flat — rather than the target height — keeps the touchdown zone
+   level while reconnecting the far end to the hillside.
+4. **Launch angle sets the do-nothing landing.** There's no auto-level, so the bike leaves a lip
+   holding the lip's pitch; on flat ground the resulting error *is* the launch angle. Angles at or
+   under ~24 deg therefore land clean with no input, which correctly reserves the sketchy and bad
+   bands for failed rotations rather than for ordinary jumping.
+
+Original sketch, still to do: Heightfield to 1 m cells (`res: 1025`, `meshStride` 4 to hold the
 triangle count) so a lip is actually resolved. Mask-blend stamps — *not* additive, or a ramp on a
 slope comes out lopsided — with approach corridors. Kicker and tabletop with geometry derived from
 the ballistic arc: a projectile returning to launch height always arrives at exactly its launch

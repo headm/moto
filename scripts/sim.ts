@@ -15,6 +15,9 @@ import * as THREE from 'three';
 import { T } from '../src/core/tunables';
 import type { InputState } from '../src/core/input';
 import { Heightfield } from '../src/world/heightfield';
+import { applyPark, lipHeight, launchRange } from '../src/world/ramps';
+import type { Kicker, Tabletop } from '../src/world/ramps';
+import { PARK } from '../src/world/park';
 import { createBikeState, resetBike, groundSpeed, type BikeState } from '../src/bike/state';
 import { stepBike } from '../src/bike/physics';
 
@@ -174,10 +177,14 @@ function run(hf: Heightfield, seconds: number, drive: (t: number, input: InputSt
 
 console.log('\nmoto — headless physics check\n' + '-'.repeat(62));
 
+// Bike-physics checks run on bare terrain: they are about the model, not the
+// park, and features in the way would quietly change what they measure.
+const genStart = Date.now();
 const hf = new Heightfield(T.world);
+const genMs = Date.now() - genStart;
 console.log(
   `world  ${hf.size} m,  ${hf.res}^2 samples,  cell ${hf.cell} m,  ` +
-    `spawn y ${hf.spawn.y.toFixed(2)}\n`,
+    `spawn y ${hf.spawn.y.toFixed(2)},  generated in ${genMs} ms\n`,
 );
 
 // --- 1. flat-out acceleration ---------------------------------------------
@@ -580,6 +587,88 @@ console.log(
     `        ${r.realHops} hop(s) over 0.25 s, longest ${r.longestAir.toFixed(2)} s, ` +
       `airborne ${(r.airFraction * 100).toFixed(1)}% of the time\n`,
   );
+}
+
+// --- 8. park validator -----------------------------------------------------
+{
+  const parkField = new Heightfield(T.world);
+  applyPark(parkField, PARK);
+
+  /** Start on the feature's approach at a given speed and ride straight over it. */
+  function ride(f: Kicker | Tabletop, speed: number, boost: boolean) {
+    const s = createBikeState();
+    resetBike(s, parkField);
+
+    const fwdX = Math.sin(f.yaw);
+    const fwdZ = Math.cos(f.yaw);
+    const u = -(f.approach - 3);
+    s.pos.x = f.x + fwdX * u;
+    s.pos.z = f.z + fwdZ * u;
+    s.pos.y = parkField.height(s.pos.x, s.pos.z) + T.susp.restHeight;
+    s.yaw = f.yaw;
+    s.vel.set(fwdX * speed, 0, fwdZ * speed);
+    s.landing.pending = false;
+    if (boost) s.boostRemaining = T.boost.duration;
+
+    const input = idle();
+    input.throttle = 1;
+
+    let peakAir = 0;
+    let peakHeight = 0;
+    let band = 'none';
+    let pitchErr = 0;
+
+    for (let i = 0; i < 900; i++) {
+      stepBike(s, parkField, input, STEP);
+      if (!finite(s)) break;
+      peakAir = Math.max(peakAir, s.airTime);
+      peakHeight = Math.max(peakHeight, s.airPeak);
+      if (s.landing.pending) {
+        if (s.landing.airTime > 0.3) {
+          band = s.landing.band;
+          pitchErr = s.landing.pitchErrDeg;
+          break;
+        }
+        s.landing.pending = false;
+      }
+    }
+    return { peakAir, peakHeight, band, pitchErr, finite: finite(s) };
+  }
+
+  const jumps = PARK.filter((f): f is Kicker | Tabletop => f.kind !== 'rollers');
+
+  for (const f of jumps) {
+    const H = lipHeight(f.length, f.angleDeg);
+    const base = ride(f, 25, false);
+    const boosted = ride(f, 25, true);
+
+    check(
+      `${f.name}: launches the bike`,
+      base.peakAir > 0.45 && base.finite,
+      `lip ${H.toFixed(1)} m, ${base.peakAir.toFixed(2)} s air, ${base.peakHeight.toFixed(1)} m up`,
+    );
+    check(
+      `${f.name}: has somewhere to land`,
+      base.band !== 'none' && boosted.band !== 'none',
+      `base ${base.band} (${base.pitchErr.toFixed(0)}deg), boosted ${boosted.band} (${boosted.pitchErr.toFixed(0)}deg)`,
+    );
+    console.log(
+      `        boosted: ${boosted.peakAir.toFixed(2)} s air, ${boosted.peakHeight.toFixed(1)} m up, ` +
+        `nominal range ${launchRange(f.angleDeg, 25, T.bike.gravity).toFixed(0)}-` +
+        `${launchRange(f.angleDeg, 34, T.bike.gravity).toFixed(0)} m`,
+    );
+  }
+
+  // The design claim behind the shallow angles: a rider who does nothing in the
+  // air still lands acceptably off the small jumps.
+  const gentle = jumps.filter((f) => f.angleDeg <= 24);
+  const gentleBands = gentle.map((f) => ride(f, 25, false).band);
+  check(
+    'do-nothing landings survive the gentle jumps',
+    gentleBands.every((b) => b === 'clean' || b === 'sketchy'),
+    gentle.map((f, i) => `${f.name}=${gentleBands[i]}`).join(', '),
+  );
+  console.log('');
 }
 
 console.log('-'.repeat(62));
