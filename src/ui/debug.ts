@@ -69,6 +69,10 @@ export function buildGui(cb: DebugCallbacks): GUI {
   landing.add(T.landing, 'snapTime', 0, 2, 0.05);
   landing.add(T.landing, 'minAirTime', 0, 1.5, 0.05);
 
+  const water = gui.addFolder('Water').close();
+  water.add(T.water, 'drag', 0, 12, 0.1);
+  water.add(T.water, 'sink', 0, 15, 0.1);
+
   const boost = gui.addFolder('Boost').close();
   boost.add(T.boost, 'duration', 0.2, 10, 0.1);
   boost.add(T.boost, 'cooldown', 0, 10, 0.1);
@@ -134,6 +138,7 @@ export function buildGui(cb: DebugCallbacks): GUI {
   const render = gui.addFolder('Render').close();
   render.add(T.render, 'terrainShadows').onChange(cb.applyRender);
   render.add(T.render, 'wireframe').onChange(cb.applyRender);
+  render.add(T.render, 'showMarkers').name('feature numbers').onChange(cb.applyRender);
   render.add(T.render, 'fogDensity', 0, 0.01, 0.0001).onChange(cb.applyRender);
 
   const presets = gui.addFolder('Presets').close();

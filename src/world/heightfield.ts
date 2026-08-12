@@ -64,6 +64,17 @@ function smoothstep(edge0: number, edge1: number, x: number): number {
   return t * t * (3 - 2 * t);
 }
 
+export interface WaterBody {
+  /** Centre of the body. */
+  x: number;
+  z: number;
+  yaw: number;
+  halfLength: number;
+  halfWidth: number;
+  /** World height of the water surface. */
+  level: number;
+}
+
 export class Heightfield {
   readonly size: number;
   readonly res: number;
@@ -73,6 +84,8 @@ export class Heightfield {
   readonly data: Float32Array;
   /** 1 where a ramp stamp has groomed the surface, for shading. */
   readonly mark: Uint8Array;
+  /** Water bodies, as oriented rectangles. Populated by pond stamps. */
+  readonly waters: WaterBody[] = [];
   /** Level pad the bike starts on, facing the bowl. */
   readonly spawn = new THREE.Vector3();
   readonly spawnYaw = Math.PI;
@@ -171,6 +184,25 @@ export class Heightfield {
     const top = h00 + (h10 - h00) * fx;
     const bot = h01 + (h11 - h01) * fx;
     return top + (bot - top) * fz;
+  }
+
+  /**
+   * Water surface height at this point, or null on dry land. Oriented-rectangle
+   * test rather than a per-cell array: there are a handful of these at most, and
+   * a full-resolution mask would cost megabytes to answer the same question.
+   */
+  waterLevelAt(x: number, z: number): number | null {
+    for (let i = 0; i < this.waters.length; i++) {
+      const w = this.waters[i];
+      const dx = x - w.x;
+      const dz = z - w.z;
+      const u = dx * Math.sin(w.yaw) + dz * Math.cos(w.yaw);
+      if (u < -w.halfLength || u > w.halfLength) continue;
+      const v = -dx * Math.cos(w.yaw) + dz * Math.sin(w.yaw);
+      if (v < -w.halfWidth || v > w.halfWidth) continue;
+      return w.level;
+    }
+    return null;
   }
 
   /** Surface normal by central differences. */

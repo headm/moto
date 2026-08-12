@@ -40,7 +40,9 @@ src/
   world/
     heightfield.ts        the terrain data model + h(x,z) and normal(x,z) sampling
     ramps.ts              ramp/kicker/gap definitions as height "stamps"
-    park.ts               the feature layout, as plain data
+    park.ts               the feature layout and set-piece props, as plain data
+    props.ts              water surfaces, the burning loop, alligators
+    markers.ts            numbered flags, indices shared with `npm run sim`
     terrainMesh.ts        heightfield → BufferGeometry with slope-based vertex colors
     scatter.ts            instanced rocks, shrubs, banners, markers
     sky.ts                gradient sky, fog, sun, hemisphere light
@@ -316,7 +318,15 @@ Four things this turned up, all of which change the sketch below:
 3. **A long levelled landing becomes a raised causeway** where terrain falls away. Tapering the
    stamp *weight* over the trailing flat — rather than the target height — keeps the touchdown zone
    level while reconnecting the far end to the hillside.
-4. **Launch angle sets the do-nothing landing.** There's no auto-level, so the bike leaves a lip
+4. **Decorative geometry is the only kind available above the ground.** A heightfield cannot express
+   an overhang, so anything you pass *through* — a loop, a tunnel, a gantry — is a prop with no
+   collision. That is fine, and cheap, but it means such a prop is only correct if it sits on the
+   actual flight path: place it from a *traced* trajectory, not from `launchRange`, and assert the
+   pass with a check so retuning the ramp cannot silently move the bike out of the hole.
+5. **Water fits the existing punishment model exactly.** Heavy drag below the surface takes your
+   momentum and nothing else, which is the same rule the landing bands follow — no reset, no
+   interruption. It needed no new failure state, just a `waterLevelAt` lookup and two lines of drag.
+6. **Launch angle sets the do-nothing landing.** There's no auto-level, so the bike leaves a lip
    holding the lip's pitch; on flat ground the resulting error *is* the launch angle. Angles at or
    under ~24 deg therefore land clean with no input, which correctly reserves the sketchy and bad
    bands for failed rotations rather than for ordinary jumping.

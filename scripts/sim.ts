@@ -15,9 +15,9 @@ import * as THREE from 'three';
 import { T } from '../src/core/tunables';
 import type { InputState } from '../src/core/input';
 import { Heightfield } from '../src/world/heightfield';
-import { applyPark, lipHeight, launchRange } from '../src/world/ramps';
+import { applyPark, featureLipHeight, lipCurvature, launchRange } from '../src/world/ramps';
 import type { Kicker, Tabletop } from '../src/world/ramps';
-import { PARK } from '../src/world/park';
+import { PARK, SETPIECE } from '../src/world/park';
 import { createBikeState, resetBike, groundSpeed, type BikeState } from '../src/bike/state';
 import { stepBike } from '../src/bike/physics';
 
@@ -615,12 +615,14 @@ console.log(
 
     let peakAir = 0;
     let peakHeight = 0;
+    let peakSusp = 0;
     let band = 'none';
     let pitchErr = 0;
 
     for (let i = 0; i < 900; i++) {
       stepBike(s, parkField, input, STEP);
       if (!finite(s)) break;
+      peakSusp = Math.max(peakSusp, s.susp);
       peakAir = Math.max(peakAir, s.airTime);
       peakHeight = Math.max(peakHeight, s.airPeak);
       if (s.landing.pending) {
@@ -632,23 +634,33 @@ console.log(
         s.landing.pending = false;
       }
     }
-    return { peakAir, peakHeight, band, pitchErr, finite: finite(s) };
+    return { peakAir, peakHeight, peakSusp, band, pitchErr, finite: finite(s) };
   }
 
-  const jumps = PARK.filter((f): f is Kicker | Tabletop => f.kind !== 'rollers');
+  // Number every feature by its PARK index so the harness, the in-world flags and
+  // conversation all refer to the same thing.
+  const numbered = PARK.map((f, i) => ({ f, n: i + 1 }));
+  const jumps = numbered.filter(
+    (e): e is { f: Kicker | Tabletop; n: number } =>
+      e.f.kind === 'kicker' || e.f.kind === 'tabletop',
+  );
 
-  for (const f of jumps) {
-    const H = lipHeight(f.length, f.angleDeg);
+  console.log('        park: ' + numbered.map((e) => `#${e.n} ${e.f.name}`).join(', ') + '\n');
+
+  for (const { f, n } of jumps) {
+    const H = featureLipHeight(f);
+    const curv = lipCurvature(f);
     const base = ride(f, 25, false);
     const boosted = ride(f, 25, true);
 
     check(
-      `${f.name}: launches the bike`,
+      `#${n} ${f.name}: launches`,
       base.peakAir > 0.45 && base.finite,
-      `lip ${H.toFixed(1)} m, ${base.peakAir.toFixed(2)} s air, ${base.peakHeight.toFixed(1)} m up`,
+      `lip ${H.toFixed(1)} m, ${base.peakAir.toFixed(2)} s air, ${base.peakHeight.toFixed(1)} m up, ` +
+        `pop ${(curv * 625).toFixed(0)} m/s2, susp ${base.peakSusp.toFixed(2)}/${T.susp.maxTravel} m`,
     );
     check(
-      `${f.name}: has somewhere to land`,
+      `#${n} ${f.name}: lands`,
       base.band !== 'none' && boosted.band !== 'none',
       `base ${base.band} (${base.pitchErr.toFixed(0)}deg), boosted ${boosted.band} (${boosted.pitchErr.toFixed(0)}deg)`,
     );
@@ -659,14 +671,103 @@ console.log(
     );
   }
 
-  // The design claim behind the shallow angles: a rider who does nothing in the
-  // air still lands acceptably off the small jumps.
-  const gentle = jumps.filter((f) => f.angleDeg <= 24);
-  const gentleBands = gentle.map((f) => ride(f, 25, false).band);
+  // Every feature must be survivable with no input at all. Framed as "nothing
+  // rates bad" rather than "these specific angles land clean", because the latter
+  // filtered on angleDeg <= 24 and silently stopped testing anything the moment
+  // the ramps were made poppier — a check that passes by matching nothing is
+  // worse than no check.
+  const doNothing = jumps.map((e) => ({ n: e.n, band: ride(e.f, 25, false).band }));
   check(
-    'do-nothing landings survive the gentle jumps',
-    gentleBands.every((b) => b === 'clean' || b === 'sketchy'),
-    gentle.map((f, i) => `${f.name}=${gentleBands[i]}`).join(', '),
+    'no feature is unlandable with no input',
+    doNothing.every((d) => d.band !== 'bad'),
+    doNothing.map((d) => `#${d.n}=${d.band}`).join(' '),
+  );
+  console.log('');
+}
+
+// --- 9. the set piece ------------------------------------------------------
+{
+  const parkField = new Heightfield(T.world);
+  applyPark(parkField, PARK);
+
+  const gauntlet = PARK.find((f) => f.name === 'the gauntlet') as Kicker;
+  const loop = SETPIECE.loop;
+  const axisX = Math.sin(loop.yaw);
+  const axisZ = Math.cos(loop.yaw);
+
+  /** Ride #7 and report water contact plus the closest pass to the ring centre. */
+  function runGauntlet(boost: boolean) {
+    const s = createBikeState();
+    resetBike(s, parkField);
+    const u = -(gauntlet.approach - 4);
+    s.pos.set(gauntlet.x + axisX * u, 0, gauntlet.z + axisZ * u);
+    s.pos.y = parkField.height(s.pos.x, s.pos.z) + T.susp.restHeight;
+    s.yaw = gauntlet.yaw;
+    s.vel.set(axisX * 25, 0, axisZ * 25);
+    if (boost) s.boostRemaining = T.boost.duration;
+
+    const input = idle();
+    input.throttle = 1;
+
+    let wetSteps = 0;
+    let air = 0;
+    let ringMiss = Infinity;
+    let prevSide = 0;
+    let prevX = s.pos.x;
+    let prevY = s.pos.y;
+    let prevZ = s.pos.z;
+
+    for (let i = 0; i < 1200; i++) {
+      stepBike(s, parkField, input, STEP);
+      if (!finite(s)) break;
+      if (s.inWater) wetSteps++;
+      air = Math.max(air, s.airTime);
+
+      // Signed distance along the ring's axis; a sign change means the flight
+      // crossed the ring's plane, and that is the moment to measure the miss.
+      const side =
+        (s.pos.x - loop.x) * axisX + (s.pos.z - loop.z) * axisZ;
+      if (prevSide !== 0 && Math.sign(side) !== Math.sign(prevSide)) {
+        // Interpolate to the crossing and measure in the ring's own plane.
+        const t = prevSide / (prevSide - side);
+        const cx = prevX + (s.pos.x - prevX) * t - loop.x;
+        const cy = prevY + (s.pos.y - prevY) * t - loop.y;
+        const cz = prevZ + (s.pos.z - prevZ) * t - loop.z;
+        const alongAxis = cx * axisX + cz * axisZ;
+        const inPlaneX = cx - axisX * alongAxis;
+        const inPlaneZ = cz - axisZ * alongAxis;
+        ringMiss = Math.min(ringMiss, Math.hypot(Math.hypot(inPlaneX, inPlaneZ), cy));
+      }
+      prevSide = side;
+      prevX = s.pos.x;
+      prevY = s.pos.y;
+      prevZ = s.pos.z;
+    }
+    return { wetSteps, air, ringMiss, finite: finite(s) };
+  }
+
+  const base = runGauntlet(false);
+  const boosted = runGauntlet(true);
+
+  check(
+    '#7 boosted clears the water',
+    boosted.wetSteps === 0 && boosted.finite,
+    `${boosted.air.toFixed(2)} s air, dry the whole way`,
+  );
+  check(
+    '#7 unboosted gets wet — boost or swim',
+    base.wetSteps > 0,
+    `${base.air.toFixed(2)} s air, ${(base.wetSteps * STEP).toFixed(2)} s submerged`,
+  );
+  check(
+    'the loop is actually on the flight path',
+    boosted.ringMiss < loop.radius - 1.5,
+    `passes ${boosted.ringMiss.toFixed(1)} m from centre of a ${loop.radius} m ring`,
+  );
+  check(
+    'water robs speed instead of ending the run',
+    base.finite,
+    'still finite and rideable after a swim',
   );
   console.log('');
 }

@@ -130,6 +130,18 @@ export const DEFAULTS = {
     ignitionPunch: 0.22,
   },
 
+  water: {
+    /**
+     * Per-second decay of horizontal speed below the water line. Deliberately
+     * brutal: water is the punishment for coming up short, and it punishes the
+     * same way everything else in this game does — by taking your momentum, never
+     * by ending the run.
+     */
+    drag: 3.2,
+    /** Vertical damping, so the bike settles into the water instead of plunging. */
+    sink: 4.5,
+  },
+
   landing: {
     /**
      * Landings are rated, never fatal. The bike always snaps back and keeps
@@ -232,6 +244,8 @@ export const DEFAULTS = {
   render: {
     terrainShadows: true,
     wireframe: false,
+    /** Numbered flags at each feature. The numbers match `npm run sim` output. */
+    showMarkers: true,
     /**
      * Deliberately light. Fog matches the sky's horizon band so the terrain edge
      * dissolves instead of ending, but at high density everything collapses into

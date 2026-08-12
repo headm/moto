@@ -14,9 +14,16 @@ import type { Heightfield } from './heightfield';
  * Every feature also carves a level **approach corridor** in front of itself, so
  * you never hit a lip off-camber.
  *
- * Face profile is `H·t²`, not a smoothstep. Smoothstep flattens at t=1, which
- * kills exactly the thing a kicker exists to do; `t²` is a parabola — flat where
- * it meets the ground, steepest at the lip.
+ * Face profile is `H·tⁿ`, not a smoothstep. Smoothstep flattens at t=1, which
+ * kills exactly the thing a kicker exists to do; `tⁿ` is flat where it meets the
+ * ground and steepest at the lip.
+ *
+ * The exponent is where "pop" lives. Suspension compresses at a rate set by
+ * `v² × curvature`, then releases at the lip, so how hard a ramp throws you is
+ * governed by the curvature it carries *at the lip* — which for `H·tⁿ` with a
+ * fixed lip angle works out to `tanθ·(n−1)/L`. A long gentle parabola (n=2,
+ * large L) spreads that thin; a short face with n=3 concentrates it. Same launch
+ * angle, completely different kick.
  */
 
 export interface FeatureBase {
@@ -37,6 +44,12 @@ export interface Kicker extends FeatureBase {
   length: number;
   /** Slope at the lip, degrees — this is the launch angle. */
   angleDeg: number;
+  /**
+   * Face profile exponent. 2 is a mellow parabola with curvature spread evenly;
+   * 3+ stacks the curvature at the lip for a sharp, poppy launch off a shorter,
+   * lower ramp. Defaults to 2.
+   */
+  exponent?: number;
   /** Length of the back side, which descends from the lip to ground level. */
   back: number;
   /** Level landing area carved past the back side. */
@@ -47,12 +60,27 @@ export interface Tabletop extends FeatureBase {
   kind: 'tabletop';
   length: number;
   angleDeg: number;
+  exponent?: number;
   /** Flat deck at lip height. Clear it, or land on it — both are survivable. */
   deck: number;
   /** Landing ramp descending from deck height back to ground. */
   down: number;
   /** Level runout past the landing. */
   runout: number;
+}
+
+/**
+ * A water hazard. Carves a basin and registers a water body, so coming up short
+ * costs you almost all your speed instead of ending the run — the same "lose
+ * momentum, never reset" rule the landing bands follow.
+ */
+export interface Pond extends FeatureBase {
+  kind: 'pond';
+  /** Extent along travel. `halfWidth` is the extent across it. */
+  length: number;
+  depth: number;
+  /** How far the water surface sits below the surrounding ground. */
+  freeboard: number;
 }
 
 export interface Rollers extends FeatureBase {
@@ -62,11 +90,29 @@ export interface Rollers extends FeatureBase {
   height: number;
 }
 
-export type Feature = Kicker | Tabletop | Rollers;
+export type Feature = Kicker | Tabletop | Rollers | Pond;
 
-/** Lip height that produces the requested launch angle: h = H(u/L)², so H = L·tanθ/2. */
-export function lipHeight(length: number, angleDeg: number): number {
-  return (length * Math.tan((angleDeg * Math.PI) / 180)) / 2;
+/**
+ * Lip height that produces the requested launch angle. For h = H·tⁿ the lip slope
+ * is nH/L, so H = L·tanθ/n — meaning a sharper exponent gives a *lower* ramp for
+ * the same launch angle, which also costs less speed to climb.
+ */
+export function lipHeight(length: number, angleDeg: number, exponent = 2): number {
+  return (length * Math.tan((angleDeg * Math.PI) / 180)) / exponent;
+}
+
+export function featureLipHeight(f: Kicker | Tabletop): number {
+  return lipHeight(f.length, f.angleDeg, f.exponent ?? 2);
+}
+
+/**
+ * Face curvature at the lip — the number that predicts pop. Multiply by v² for
+ * the upward acceleration the ramp demands; anything far above gravity throws the
+ * bike hard and works the suspension to its stop on the way.
+ */
+export function lipCurvature(f: Kicker | Tabletop): number {
+  const n = f.exponent ?? 2;
+  return (Math.tan((f.angleDeg * Math.PI) / 180) * (n - 1)) / f.length;
 }
 
 /** Ideal range for a launch at this angle and speed, returning to launch height. */
@@ -88,6 +134,8 @@ function featureLength(f: Feature): number {
       return f.length + f.deck + f.down + f.runout;
     case 'rollers':
       return f.count * f.spacing;
+    case 'pond':
+      return f.length;
   }
 }
 
@@ -95,15 +143,15 @@ function featureLength(f: Feature): number {
  * Height above the feature's base plane at distance `u` along travel.
  * `u` is negative through the approach corridor, which is simply level.
  */
-function profile(f: Feature, u: number): number {
+function profile(f: Feature, u: number, v: number): number {
   if (u <= 0) return 0;
 
   switch (f.kind) {
     case 'kicker': {
-      const H = lipHeight(f.length, f.angleDeg);
+      const H = featureLipHeight(f);
       if (u <= f.length) {
         const t = u / f.length;
-        return H * t * t;
+        return H * Math.pow(t, f.exponent ?? 2);
       }
       if (u <= f.length + f.back) {
         // Back side, in case you don't clear the lip. Smooth at both ends so
@@ -115,10 +163,10 @@ function profile(f: Feature, u: number): number {
     }
 
     case 'tabletop': {
-      const H = lipHeight(f.length, f.angleDeg);
+      const H = featureLipHeight(f);
       if (u <= f.length) {
         const t = u / f.length;
-        return H * t * t;
+        return H * Math.pow(t, f.exponent ?? 2);
       }
       if (u <= f.length + f.deck) return H;
       if (u <= f.length + f.deck + f.down) {
@@ -134,6 +182,16 @@ function profile(f: Feature, u: number): number {
       const span = f.count * f.spacing;
       if (u >= span) return 0;
       return f.height * 0.5 * (1 - Math.cos((2 * Math.PI * u) / f.spacing));
+    }
+
+    case 'pond': {
+      if (u >= f.length) return 0;
+      // Eased in both axes, so the banks are rideable rather than a pit with
+      // vertical walls you cannot climb out of.
+      const t = u / f.length;
+      const along = smoothstep01(Math.min(1, Math.min(t, 1 - t) / 0.22));
+      const across = smoothstep01(Math.min(1, (1 - Math.abs(v) / f.halfWidth) / 0.3));
+      return -f.depth * along * across;
     }
   }
 }
@@ -168,6 +226,8 @@ function tailFade(f: Feature): number {
       return f.runout * 0.5;
     case 'rollers':
       return END_FADE;
+    case 'pond':
+      return f.length * 0.2;
   }
 }
 
@@ -177,6 +237,19 @@ function tailFade(f: Feature): number {
  */
 export function applyFeature(hf: Heightfield, f: Feature) {
   const base = hf.height(f.x, f.z);
+
+  if (f.kind === 'pond') {
+    // Registered before the dig, so the level is measured against the original
+    // ground rather than the hole about to be cut into it.
+    hf.waters.push({
+      x: f.x + Math.sin(f.yaw) * (f.length / 2),
+      z: f.z + Math.cos(f.yaw) * (f.length / 2),
+      yaw: f.yaw,
+      halfLength: f.length / 2,
+      halfWidth: f.halfWidth,
+      level: base - f.freeboard,
+    });
+  }
 
   const fwdX = Math.sin(f.yaw);
   const fwdZ = Math.cos(f.yaw);
@@ -239,7 +312,7 @@ export function applyFeature(hf: Heightfield, f: Feature) {
       const w = lat * lon;
       if (w <= 0.001) continue;
 
-      const target = base + profile(f, u);
+      const target = base + profile(f, u, v);
       const k = j * res + i;
       data[k] += (target - data[k]) * w;
       // Marked cells are shaded as groomed dirt, which is what makes a feature

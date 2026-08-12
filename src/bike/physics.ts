@@ -288,6 +288,18 @@ export function stepBike(s: BikeState, hf: Heightfield, input: InputState, dt: n
     s.groundTime = 0;
   }
 
+  // ---- water ---------------------------------------------------------------
+  // Applied after the ground branches so it damps whatever they produced, and on
+  // both branches: hitting water mid-flight should kill the flight.
+  const waterLevel = hf.waterLevelAt(s.pos.x, s.pos.z);
+  s.inWater = waterLevel !== null && s.pos.y < waterLevel;
+  if (s.inWater) {
+    const wd = Math.exp(-T.water.drag * dt);
+    s.vel.x *= wd;
+    s.vel.z *= wd;
+    s.vel.y *= Math.exp(-T.water.sink * dt);
+  }
+
   s.wheelSpin += s.wheelRate * dt;
 
   // ---- integrate ----------------------------------------------------------

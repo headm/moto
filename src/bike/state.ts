@@ -35,6 +35,8 @@ export interface BikeState {
   recovering: number;
   /** Orientation snap rate in effect while recovering. */
   recoverSnap: number;
+  /** True while the chassis is below a water surface. */
+  inWater: boolean;
   /** Seconds of boost burst left. Greater than zero means boosting. */
   boostRemaining: number;
   /** Seconds until another boost may be started. */
@@ -71,6 +73,7 @@ export function createBikeState(): BikeState {
     wheelRate: 0,
     susp: 0,
     grounded: true,
+    inWater: false,
     landing: createLandingReport(),
     recovering: 0,
     recoverSnap: 0,
@@ -101,6 +104,7 @@ export function resetBike(s: BikeState, hf: Heightfield) {
   s.wheelRate = 0;
   s.susp = 0;
   s.grounded = true;
+  s.inWater = false;
   s.landing.pending = false;
   s.recovering = 0;
   s.recoverSnap = 0;

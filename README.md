@@ -60,10 +60,42 @@ Riding works, landings are rated, and there are ramps. Terrain, suspension, stee
 rotation, jump, boost, landing feedback, the chase camera and a first set of features are in. There
 are no tricks and no scoring yet — that's M4.
 
-Five features run in a straight line from the spawn pad toward the bowl: warmup whoops, a first
-kicker, a tabletop, a big-air ramp, and a hip off to the right. Just hold `W` and you meet all of
-them in order. Boost the big one — it gives about 2 s of air and 11 m of height, which is enough
-time for a full backflip.
+Features are numbered, with a flag on a pole at the mouth of each approach. The same numbers print in
+`npm run sim`, so a feature can be named the same way in the world, in the harness and in
+conversation.
+
+| # | Feature | Lip | Pop at 25 m/s | Susp. used | Air (base / boosted) |
+|---|---|---|---|---|---|
+| 1 | warmup whoops | — | — | — | rhythm section |
+| 2 | first kicker | 1.9 m | 60 m/s² | 0.30 m | 1.28 / 1.47 s |
+| 3 | tabletop | 2.3 m | 60 m/s² | 0.31 m | 1.40 / 1.37 s |
+| 4 | big air | 5.2 m | 49 m/s² | 0.28 m | 2.07 / **2.42 s, 14 m up** |
+| 5 | sharp kicker | 1.7 m | 98 m/s² | 0.37 m | 1.30 / 1.45 s |
+| 6 | side hip | 2.4 m | 30 m/s² | 0.25 m | 1.36 / 1.55 s |
+| 7 | the gauntlet | 5.0 m | 94 m/s² | 0.36 m | 2.47 / **2.66 s, 19 m up** |
+| 8 | gator pond | — | — | — | the bit you'd rather clear |
+
+**#7 is the set piece.** A 45° cubic face throws you 19 m up, through a burning loop, over a pond with
+alligators in it. Boosted you clear the water; unboosted you land in it and spend about a second
+submerged, which costs you nearly all your speed — water punishes the same way everything else here
+does, by taking momentum and never by ending the run.
+
+The loop is **decoration, not collision**: ground contact is a heightfield sample, which by
+construction cannot represent an overhang, so there is nothing to hit. That only works if the hole is
+genuinely on the flight path, so its position comes from a traced trajectory using the real physics
+rather than from the ballistic formula (which lands several metres low, because the ramp kicks). The
+harness asserts the bike still passes inside the ring, so retuning #7 breaks that loudly instead of
+silently.
+
+**Pop comes from face curvature, not height.** The suspension loads at a rate set by `v² × curvature`
+and releases at the lip, so what throws you is the curvature the face carries *where you leave it*.
+For a face of `H·tⁿ` at a fixed launch angle that works out to `tanθ·(n−1)/L` — so a short cubic face
+throws you far harder than a long parabola of the same height, and being lower, costs less speed to
+climb. `exponent` is the dial: 2 is mellow, 3 pops.
+
+The "susp. used" column matters: there is only 0.40 m of travel, so past roughly 120 m/s² the spring
+runs out and hits its stop, which reads as hitting a kerb rather than as a launch. Beyond that the
+honest fix is raising `springK` and `maxTravel` together, not the ramp geometry.
 
 Ramps are height *stamps* written into the same heightfield as the terrain, so ground contact stays
 an O(1) sample: no meshes, no colliders, nothing to desync. They mask-*blend* rather than add, which
