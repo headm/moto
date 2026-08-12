@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Moto</title>
+    <style>
+      :root {
+        --hud: #f4efe6;
+        --hud-dim: #a49c8e;
+        --accent: #ffb340;
+      }
+      * { box-sizing: border-box; }
+      html, body { margin: 0; height: 100%; overflow: hidden; background: #0d0f12; }
+      body {
+        font: 500 14px/1.3 ui-monospace, "SF Mono", Menlo, monospace;
+        color: var(--hud);
+        -webkit-font-smoothing: antialiased;
+      }
+      #app { position: fixed; inset: 0; }
+      #app canvas { display: block; width: 100%; height: 100%; }
+
+      #hud {
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        user-select: none;
+        text-shadow: 0 1px 3px rgba(0, 0, 0, 0.65);
+      }
+
+      .speedo {
+        position: absolute;
+        left: 28px;
+        bottom: 24px;
+        display: flex;
+        align-items: baseline;
+        gap: 8px;
+      }
+      .speedo b {
+        font-size: 58px;
+        font-weight: 700;
+        letter-spacing: -2px;
+        font-variant-numeric: tabular-nums;
+      }
+      .speedo span { font-size: 13px; color: var(--hud-dim); letter-spacing: 1px; }
+
+      .air {
+        position: absolute;
+        left: 50%;
+        top: 14%;
+        transform: translateX(-50%);
+        text-align: center;
+        opacity: 0;
+        transition: opacity 120ms linear;
+      }
+      .air.on { opacity: 1; }
+      .air b {
+        display: block;
+        font-size: 44px;
+        font-weight: 700;
+        font-variant-numeric: tabular-nums;
+        color: var(--accent);
+        letter-spacing: -1px;
+      }
+      .air span { font-size: 12px; color: var(--hud-dim); letter-spacing: 2px; }
+
+      #stats {
+        position: absolute;
+        right: 18px;
+        top: 14px;
+        text-align: right;
+        font-size: 12px;
+        color: var(--hud-dim);
+        font-variant-numeric: tabular-nums;
+        white-space: pre;
+      }
+
+      #hint {
+        position: absolute;
+        left: 28px;
+        top: 16px;
+        font-size: 12px;
+        color: var(--hud-dim);
+        line-height: 1.8;
+      }
+      #hint kbd {
+        display: inline-block;
+        min-width: 20px;
+        padding: 1px 5px;
+        margin-right: 2px;
+        border: 1px solid #4a463f;
+        border-bottom-width: 2px;
+        border-radius: 4px;
+        background: rgba(20, 22, 26, 0.55);
+        color: var(--hud);
+        font: inherit;
+        text-align: center;
+      }
+      #hint.fade { opacity: 0.22; transition: opacity 600ms ease; }
+    </style>
+  </head>
+  <body>
+    <div id="app"></div>
+    <div id="hud">
+      <div id="hint">
+        <kbd>W</kbd><kbd>S</kbd> throttle / brake &nbsp; <kbd>A</kbd><kbd>D</kbd> steer<br />
+        <kbd>↑</kbd><kbd>↓</kbd> lean fwd / back (air) &nbsp; <kbd>Q</kbd><kbd>E</kbd> roll<br />
+        <kbd>R</kbd> respawn &nbsp; <kbd>H</kbd> hide tuning panel
+      </div>
+      <div class="speedo"><b id="speed">0</b><span>KM/H</span></div>
+      <div class="air" id="air"><b id="airtime">0.00</b><span>AIR TIME</span></div>
+      <div id="stats"></div>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
