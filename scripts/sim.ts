@@ -599,8 +599,10 @@ console.log(
     const s = createBikeState();
     resetBike(s, parkField);
 
-    const fwdX = Math.sin(f.yaw);
-    const fwdZ = Math.cos(f.yaw);
+    const axisX = Math.sin(f.yaw);
+    const axisZ = Math.cos(f.yaw);
+    const fwdX = axisX;
+    const fwdZ = axisZ;
     const u = -(f.approach - 3);
     s.pos.x = f.x + fwdX * u;
     s.pos.z = f.z + fwdZ * u;
@@ -618,20 +620,34 @@ console.log(
     let peakSusp = 0;
     let band = 'none';
     let pitchErr = 0;
+    let launched = false;
 
+    // Measure only the flight that leaves *this* feature's own face, and stop when
+    // it lands. Reporting peak values over a longer run credited each feature with
+    // whatever came next: a tabletop that had been flattened to a 0.21 s speed bump
+    // was reported at 1.40 s, borrowed from the jump after it. The `u > 0` guard
+    // rejects hops taken on the run-in, which for closely spaced features is the
+    // previous feature's landing.
     for (let i = 0; i < 900; i++) {
+      const wasGrounded = s.grounded;
       stepBike(s, parkField, input, STEP);
       if (!finite(s)) break;
       peakSusp = Math.max(peakSusp, s.susp);
-      peakAir = Math.max(peakAir, s.airTime);
-      peakHeight = Math.max(peakHeight, s.airPeak);
-      if (s.landing.pending) {
-        if (s.landing.airTime > 0.3) {
-          band = s.landing.band;
-          pitchErr = s.landing.pitchErrDeg;
+
+      const u = (s.pos.x - f.x) * axisX + (s.pos.z - f.z) * axisZ;
+      if (wasGrounded && !s.grounded && !launched && u > 0) launched = true;
+
+      if (launched) {
+        if (!s.grounded) {
+          peakAir = Math.max(peakAir, s.airTime);
+          peakHeight = Math.max(peakHeight, s.airPeak);
+        } else if (!wasGrounded) {
+          if (s.landing.pending) {
+            band = s.landing.band;
+            pitchErr = s.landing.pitchErrDeg;
+          }
           break;
         }
-        s.landing.pending = false;
       }
     }
     return { peakAir, peakHeight, peakSusp, band, pitchErr, finite: finite(s) };
@@ -664,10 +680,16 @@ console.log(
       base.band !== 'none' && boosted.band !== 'none',
       `base ${base.band} (${base.pitchErr.toFixed(0)}deg), boosted ${boosted.band} (${boosted.pitchErr.toFixed(0)}deg)`,
     );
+    // The ballistic range formula needs a launch angle, which a `crest` face does
+    // not have — it throws you off convex curvature, not off an angled lip. Printing
+    // "0-0 m" there would look like a bug rather than an inapplicable measure.
+    const crest = f.kind === 'kicker' && f.face === 'crest';
     console.log(
-      `        boosted: ${boosted.peakAir.toFixed(2)} s air, ${boosted.peakHeight.toFixed(1)} m up, ` +
-        `nominal range ${launchRange(f.angleDeg, 25, T.bike.gravity).toFixed(0)}-` +
-        `${launchRange(f.angleDeg, 34, T.bike.gravity).toFixed(0)} m`,
+      `        boosted: ${boosted.peakAir.toFixed(2)} s air, ${boosted.peakHeight.toFixed(1)} m up` +
+        (crest
+          ? ', crest launch (no lip angle)'
+          : `, nominal range ${launchRange(f.angleDeg, 25, T.bike.gravity).toFixed(0)}-` +
+            `${launchRange(f.angleDeg, 34, T.bike.gravity).toFixed(0)} m`),
     );
   }
 
@@ -676,6 +698,16 @@ console.log(
   // filtered on angleDeg <= 24 and silently stopped testing anything the moment
   // the ramps were made poppier — a check that passes by matching nothing is
   // worse than no check.
+  // The check that would have caught a flattened tabletop. A jump that no longer
+  // jumps is the failure mode that hid longest, precisely because nothing asserted
+  // the one thing every jump exists to do.
+  const airborne = jumps.map((e) => ({ n: e.n, air: ride(e.f, 25, false).peakAir }));
+  check(
+    'every jump actually launches the bike',
+    airborne.every((a) => a.air > 0.5),
+    airborne.map((a) => `#${a.n}=${a.air.toFixed(2)}s`).join(' '),
+  );
+
   const doNothing = jumps.map((e) => ({ n: e.n, band: ride(e.f, 25, false).band }));
   check(
     'no feature is unlandable with no input',

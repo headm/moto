@@ -83,7 +83,8 @@ simplification and it's what makes the feel tunable.
 ### Ground query
 
 The entire world — base terrain *and every ramp* — lives in one heightfield, so ground contact is
-an O(1) bilinear sample instead of a mesh raycast. Ramps are **additive height stamps** (see §5).
+an O(1) bilinear sample instead of a mesh raycast. Ramps are **mask-blended height stamps** (see §5) —
+blended to a target rather than added, so a feature is levelled onto whatever it sits on.
 Benefits: no tunneling at speed, no raycast cost, no mesh/collider desync. Cost: no overhangs or
 quarter-pipes. Correct trade for a motocross game.
 
@@ -323,10 +324,53 @@ Four things this turned up, all of which change the sketch below:
    collision. That is fine, and cheap, but it means such a prop is only correct if it sits on the
    actual flight path: place it from a *traced* trajectory, not from `launchRange`, and assert the
    pass with a check so retuning the ramp cannot silently move the bike out of the hole.
-5. **Water fits the existing punishment model exactly.** Heavy drag below the surface takes your
+5. **Height reads against the horizon, not against the ground under the wheels.** The set piece
+   originally launched *uphill*: 19.6 m of measured clearance, and it still felt sunken, because a
+   110 m level landing pad cut across rising ground became a trench 16 m below the surrounding
+   desert, leaving the ring level with the hillsides. Turning it to fire downhill — same ramp, same
+   pop — put the apex 26 m above the desert floor with the ring against sky. Big features need to be
+   sited against the *grade*, and a long level pad on sloping ground is always either a trench or a
+   causeway.
+
+   When the ride direction is fixed by flow and cannot be chosen — the player should meet features in
+   one continuous run, not double back — the lever that remains is **pinning a run of features to a
+   shared datum** (`baseY`). Each feature otherwise sits at its own local ground height, and the step
+   between two pads lands on the lead-in fade: 3.5 m became a 12 deg climb that cost speed, 9 m became
+   a 48 deg drop that cost the speed needed for the next ramp. A datum removes the steps instead of
+   smoothing them, and where it sits above natural ground the fill *is* the platform a big feature
+   needs — 11 m of it in the bowl, which is what gets #7's ring clear of the terrain.
+
+   Two corollaries. The lead-in fade wants to be much longer than the trailing one (26 m vs 8 m),
+   because it is where a pad meets whatever came before it. And the spawn height has to be
+   re-sampled after stamping, or a pinned pad raises the ground and the bike starts buried in it.
+6. **A convex crest throws harder than any angled lip, and is not bounded by suspension travel.**
+   Two distinct mechanisms hide behind the word "pop". A concave face loads the spring and releases it
+   at the lip, so it is capped by the 0.40 m of travel available — roughly 120 m/s². A convex crest
+   (flat on top, steepest mid-face — i.e. the *back side* of a kicker) throws you because the ground
+   falls away faster than gravity can follow, the same criterion as terrain launchability, and has no
+   such cap: #7 runs at 328 m/s². An earlier note here claimed bottoming out "reads as hitting a
+   kerb"; that was wrong. #7 bottoms the spring on every launch and is the best jump in the park.
+7. **Put a gate short of the apex, not on it.** Vertical speed is zero at the apex, so it is the
+   flattest-feeling instant of a jump. Moving the ring 9 m earlier, where the bike is still climbing
+   at ~8 m/s, is the difference between being fired through it and drifting past it.
+8. **Water fits the existing punishment model exactly.** Heavy drag below the surface takes your
    momentum and nothing else, which is the same rule the landing bands follow — no reset, no
    interruption. It needed no new failure state, just a `waterLevelAt` lookup and two lines of drag.
-6. **Launch angle sets the do-nothing landing.** There's no auto-level, so the bike leaves a lip
+9. **Stamps must not cut into each other's dirt, and the validator must not credit a feature with
+   its neighbour's air.** These two bugs concealed each other for several milestones. Approach
+   corridors reach back their own length plus a 26 m lead-in, so each feature was flattening the tail
+   of the one before it — a 2.31 m tabletop lip reduced to 0.45 m, and whoops shaved down. Meanwhile
+   the park validator reported peak air over a run that continued past its target, so the flattened
+   tabletop was reported at 1.40 s when it was actually managing 0.21 s. The lesson is that a
+   measurement which ranges wider than the thing it names will eventually launder a failure. The
+   validator now measures only the flight leaving the feature's own face, and asserts that every jump
+   gets airborne — the one property nothing had checked, being too obvious to think of.
+
+   Worth recording how the wrong fix looked right: the first diagnosis was that a tabletop's deck must
+   sit below its lip, and a `lipDrop` parameter was built for it. It moved the measurement from 0.21 s
+   to 0.23 s. Held against the real fix afterwards it made no difference at all (1.43 s vs 1.42 s), so
+   it was removed. A plausible mechanism that produces almost no effect is evidence against itself.
+10. **Launch angle sets the do-nothing landing.** There's no auto-level, so the bike leaves a lip
    holding the lip's pitch; on flat ground the resulting error *is* the launch angle. Angles at or
    under ~24 deg therefore land clean with no input, which correctly reserves the sketchy and bad
    bands for failed rotations rather than for ordinary jumping.

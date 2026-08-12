@@ -36,14 +36,46 @@ export interface FeatureBase {
   halfWidth: number;
   /** Metres of level run-up carved in front of the face. */
   approach: number;
+  /**
+   * Pin the feature's plane to this height instead of sampling the ground under
+   * its origin.
+   *
+   * Consecutive features otherwise each sit at their own local ground height, and
+   * the step between two pads has to be absorbed by the lead-in fade — which is
+   * how a 9 m difference became a 48 degree drop you land on hard, arriving at the
+   * next ramp with no speed. Pinning a run of features to one datum makes the
+   * whole sequence continuous.
+   */
+  baseY?: number;
 }
 
 export interface Kicker extends FeatureBase {
   kind: 'kicker';
   /** Face length along travel. */
   length: number;
-  /** Slope at the lip, degrees — this is the launch angle. */
+  /**
+   * Slope at the lip, degrees — the launch angle for a `power` face. A `crest`
+   * face is flat on top, so this is ignored there and `height` sets the size.
+   */
   angleDeg: number;
+  /**
+   * Face shape.
+   *
+   * `power` (default) is `H·tⁿ`: concave all the way up, steepest at the lip. It
+   * loads the suspension progressively and releases it at an angled edge.
+   *
+   * `crest` is `H·smoothstep(t)`: steepest in the *middle* and flat on top, so it
+   * throws you off convex curvature instead of off an edge. Utterly different
+   * feel — you leave nearly level, get lofted rather than angled, and the spring
+   * goes to its stop on the way up. This is the shape of the back side of a
+   * kicker, which is why riding one backwards is more fun than riding it forwards.
+   */
+  face?: 'power' | 'crest';
+  /**
+   * Explicit lip height. Required for `crest` faces (there is no lip angle to
+   * derive it from); an override for `power` faces.
+   */
+  height?: number;
   /**
    * Face profile exponent. 2 is a mellow parabola with curvature spread evenly;
    * 3+ stacks the curvature at the lip for a sharp, poppy launch off a shorter,
@@ -102,6 +134,7 @@ export function lipHeight(length: number, angleDeg: number, exponent = 2): numbe
 }
 
 export function featureLipHeight(f: Kicker | Tabletop): number {
+  if ('height' in f && f.height !== undefined) return f.height;
   return lipHeight(f.length, f.angleDeg, f.exponent ?? 2);
 }
 
@@ -111,6 +144,12 @@ export function featureLipHeight(f: Kicker | Tabletop): number {
  * bike hard and works the suspension to its stop on the way.
  */
 export function lipCurvature(f: Kicker | Tabletop): number {
+  if (f.kind === 'kicker' && f.face === 'crest') {
+    // A smoothstep crest is *convex* at the top: h'' = -6H/L². You are thrown
+    // because the ground drops away faster than gravity can follow, which is the
+    // same criterion as terrain launchability rather than a spring release.
+    return (6 * featureLipHeight(f)) / (f.length * f.length);
+  }
   const n = f.exponent ?? 2;
   return (Math.tan((f.angleDeg * Math.PI) / 180) * (n - 1)) / f.length;
 }
@@ -151,7 +190,7 @@ function profile(f: Feature, u: number, v: number): number {
       const H = featureLipHeight(f);
       if (u <= f.length) {
         const t = u / f.length;
-        return H * Math.pow(t, f.exponent ?? 2);
+        return f.face === 'crest' ? H * smoothstep01(t) : H * Math.pow(t, f.exponent ?? 2);
       }
       if (u <= f.length + f.back) {
         // Back side, in case you don't clear the lip. Smooth at both ends so
@@ -168,6 +207,7 @@ function profile(f: Feature, u: number, v: number): number {
         const t = u / f.length;
         return H * Math.pow(t, f.exponent ?? 2);
       }
+
       if (u <= f.length + f.deck) return H;
       if (u <= f.length + f.deck + f.down) {
         // Landing ramp: gentle at the deck edge, steepest in the middle where
@@ -186,11 +226,13 @@ function profile(f: Feature, u: number, v: number): number {
 
     case 'pond': {
       if (u >= f.length) return 0;
-      // Eased in both axes, so the banks are rideable rather than a pit with
-      // vertical walls you cannot climb out of.
+      // Eased in both axes so the banks are rideable rather than a pit you cannot
+      // climb out of — but not too eased. The water surface is only the part of the
+      // basin that lies below the water line, so generous easing shrinks the
+      // *visible* pond well inside its nominal footprint.
       const t = u / f.length;
-      const along = smoothstep01(Math.min(1, Math.min(t, 1 - t) / 0.22));
-      const across = smoothstep01(Math.min(1, (1 - Math.abs(v) / f.halfWidth) / 0.3));
+      const along = smoothstep01(Math.min(1, Math.min(t, 1 - t) / 0.16));
+      const across = smoothstep01(Math.min(1, (1 - Math.abs(v) / f.halfWidth) / 0.18));
       return -f.depth * along * across;
     }
   }
@@ -204,6 +246,13 @@ function profile(f: Feature, u: number, v: number): number {
  */
 const LATERAL_FADE = 14;
 const END_FADE = 8;
+/**
+ * The lead-in at the mouth of an approach, which is where a pad meets whatever
+ * came before it. Much longer than END_FADE because any height difference between
+ * consecutive pads gets absorbed here: over 8 m a 3.5 m step is a 24 degree wall,
+ * over 26 m it is a gentle 8 degree ramp that costs no speed.
+ */
+const APPROACH_FADE = 26;
 
 /**
  * How far the trailing flat blends back into natural ground.
@@ -236,7 +285,7 @@ function tailFade(f: Feature): number {
  * the whole feature — approach, face, landing — sits on one level plane.
  */
 export function applyFeature(hf: Heightfield, f: Feature) {
-  const base = hf.height(f.x, f.z);
+  const base = f.baseY ?? hf.height(f.x, f.z);
 
   if (f.kind === 'pond') {
     // Registered before the dig, so the level is measured against the original
@@ -256,7 +305,7 @@ export function applyFeature(hf: Heightfield, f: Feature) {
   const rightX = -Math.cos(f.yaw);
   const rightZ = Math.sin(f.yaw);
 
-  const uMin = -f.approach - END_FADE;
+  const uMin = -f.approach - APPROACH_FADE;
   const uMax = featureLength(f) + END_FADE;
   const vMax = f.halfWidth + LATERAL_FADE;
 
@@ -301,7 +350,7 @@ export function applyFeature(hf: Heightfield, f: Feature) {
       const lat = av <= f.halfWidth ? 1 : 1 - smoothstep01((av - f.halfWidth) / LATERAL_FADE);
       let lon = 1;
       if (u < -f.approach) {
-        lon = 1 - smoothstep01((-f.approach - u) / END_FADE);
+        lon = 1 - smoothstep01((-f.approach - u) / APPROACH_FADE);
       } else {
         const total = featureLength(f);
         const tail = tailFade(f);
@@ -314,6 +363,16 @@ export function applyFeature(hf: Heightfield, f: Feature) {
 
       const target = base + profile(f, u, v);
       const k = j * res + i;
+
+      // An approach corridor levels the run-in, and it may cut into natural
+      // terrain to do it. What it must never do is cut into dirt another feature
+      // has already shaped: approaches reach a long way back (approach length plus
+      // the 26 m lead-in), so without this guard each feature quietly flattens the
+      // tail of the one before it. That had erased most of a tabletop's face —
+      // 2.31 m of lip reduced to 0.45 m — and part of the whoops, which reads as
+      // dead space where a jump used to be.
+      if (u < 0 && mark[k] === 1 && data[k] > target) continue;
+
       data[k] += (target - data[k]) * w;
       // Marked cells are shaded as groomed dirt, which is what makes a feature
       // visible against open desert before there are any props to signpost it.
@@ -324,4 +383,8 @@ export function applyFeature(hf: Heightfield, f: Feature) {
 
 export function applyPark(hf: Heightfield, park: readonly Feature[]) {
   for (const f of park) applyFeature(hf, f);
+  // The spawn pad is levelled during terrain generation, before any of this ran.
+  // A feature pinned with `baseY` can raise the ground under the spawn, and the
+  // bike would then start buried in it.
+  hf.spawn.y = hf.height(hf.spawn.x, hf.spawn.z);
 }
