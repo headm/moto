@@ -439,7 +439,113 @@ console.log(
   console.log('');
 }
 
-// --- 6. long random session -----------------------------------------------
+// --- 6. landings -----------------------------------------------------------
+{
+  /**
+   * Hop, force a pitch error mid-flight, and see how the landing is rated.
+   * Returns the report plus enough state to prove the run was never reset.
+   */
+  function landWithPitchError(errorDeg: number) {
+    const s = createBikeState();
+    resetBike(s, hf);
+    const input = idle();
+    input.throttle = 1;
+    for (let i = 0; i < 420; i++) stepBike(s, hf, input, STEP);
+
+    // Launch, then set the attitude directly — this is about the landing rating,
+    // not about whether the air controls can reach a given angle.
+    s.vel.y = 13;
+    for (let i = 0; i < 30; i++) stepBike(s, hf, input, STEP);
+    const speedBefore = groundSpeed(s);
+    const groundPitchAtLaunch = 0;
+    s.pitch = THREE.MathUtils.degToRad(errorDeg) + groundPitchAtLaunch;
+
+    let report = null as null | { band: string; pitchErrDeg: number; keptSpeed: number };
+    for (let i = 0; i < 400; i++) {
+      stepBike(s, hf, input, STEP);
+      if (s.landing.pending) {
+        s.landing.pending = false;
+        report = {
+          band: s.landing.band,
+          pitchErrDeg: s.landing.pitchErrDeg,
+          keptSpeed: s.landing.keptSpeed,
+        };
+        break;
+      }
+    }
+    return { report, speedBefore, state: s };
+  }
+
+  const shallow = landWithPitchError(10);
+  const middling = landWithPitchError(40);
+  const inverted = landWithPitchError(170);
+
+  check(
+    'a square landing rates clean',
+    shallow.report?.band === 'clean',
+    `${shallow.report?.pitchErrDeg.toFixed(0)}deg -> ${shallow.report?.band}`,
+  );
+  check(
+    'an off-angle landing rates sketchy',
+    middling.report?.band === 'sketchy',
+    `${middling.report?.pitchErrDeg.toFixed(0)}deg -> ${middling.report?.band}`,
+  );
+  check(
+    'landing inverted rates bad',
+    inverted.report?.band === 'bad',
+    `${inverted.report?.pitchErrDeg.toFixed(0)}deg -> ${inverted.report?.band}`,
+  );
+  check(
+    'clean keeps its speed, bad does not',
+    shallow.report!.keptSpeed === 1 && inverted.report!.keptSpeed < 0.6,
+    `clean x${shallow.report!.keptSpeed}, bad x${inverted.report!.keptSpeed}`,
+  );
+
+  // The whole point of this design: nothing ever resets the run.
+  {
+    const s = inverted.state;
+    const before = s.pos.clone();
+    const input = idle();
+    input.throttle = 1;
+    for (let i = 0; i < 360; i++) stepBike(s, hf, input, STEP);
+    const moved = s.pos.distanceTo(before);
+    const uprightDeg = Math.abs(THREE.MathUtils.radToDeg(s.pitch));
+    check(
+      'a bad landing never resets the run',
+      moved > 5 && s.pos.distanceTo(hf.spawn) > 20,
+      `carried on ${moved.toFixed(0)} m from where it landed`,
+    );
+    check(
+      'and the bike snaps back upright',
+      uprightDeg < 20 && finite(s),
+      `pitch settled to ${uprightDeg.toFixed(0)}deg`,
+    );
+  }
+
+  // Rolling terrain must not spam the readout with micro-hops.
+  {
+    const s = createBikeState();
+    resetBike(s, hf);
+    const input = idle();
+    input.throttle = 1;
+    let rated = 0;
+    for (let i = 0; i < 1800; i++) {
+      stepBike(s, hf, input, STEP);
+      if (s.landing.pending) {
+        s.landing.pending = false;
+        rated++;
+      }
+    }
+    check(
+      'micro-hops go unrated',
+      rated <= 4,
+      `${rated} landing(s) rated over 15 s of driving`,
+    );
+  }
+  console.log('');
+}
+
+// --- 7. long random session -----------------------------------------------
 {
   // Deterministic pseudo-random rider, changing input four times a second.
   let seed = 20260812;

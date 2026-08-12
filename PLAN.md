@@ -10,7 +10,7 @@ flip and spin, land clean, chain combos.
 2. **Arcade, not simulation.** The bike is forgiving on the ground and expressive in the air.
    No stalling, no clutch, no realistic weight transfer. Landing is the only skill gate.
 3. **Zero friction to play.** Loads in under 3 seconds, keyboard-only, no menus between you and
-   the first jump. Respawn is instant.
+   the first jump. Nothing ever interrupts a session — landings are rated, never fatal.
 4. **Readable at a glance.** Low-poly flat-shaded world so the horizon, ramp lips, and landing
    slopes are unambiguous at speed.
 
@@ -46,19 +46,20 @@ src/
   bike/
     state.ts              BikeState: position, velocity, yaw/pitch/roll, suspension, flags
     physics.ts            the integrator — ground contact, drive, steer, air, landing
+    landing.ts            landing band classification, shared by physics/HUD/overlay
     model.ts              visual bike: frame, wheels, forks, rider rig
     rider.ts              rider pose blending (tuck, whip, superman, dead-sailor)
   game/
     camera.ts             spring-arm chase camera, FOV kick, shake
     tricks.ts             rotation accumulator → trick detection
     scoring.ts            airtime, trick points, combo multiplier, session best
-    respawn.ts            crash detection, ragdoll-lite, reset flow
+    boostFx.ts            exhaust flames, exhaust light, ember/dust trail
   ui/
     hud.ts                speed, airtime, trick banner, score, combo
-    overlays.ts           title card, crash card, controls hint
+    overlays.ts           title card, controls hint
   audio/
     engine.ts             looped engine sample with RPM-driven playbackRate
-    sfx.ts                land, crash, whoosh, dirt, one-shot pool
+    sfx.ts                land, scrape, whoosh, dirt, one-shot pool
 ```
 
 ### The loop
@@ -137,10 +138,14 @@ On the frame contact resumes:
 1. Compute `pitchError` = bike pitch vs terrain slope along travel direction, and `rollError`.
 2. Within tolerance → **clean landing.** Suspension eats the impact, forward speed is preserved
    (bonus speed if landing on a downslope), combo continues.
-3. Outside tolerance → **crash.** Bike tumbles, rider detaches with a simple 3-segment tumble,
-   score for the run banks at zero, respawn prompt after ~1.2 s.
-4. Near the edge of tolerance → **sketchy landing:** big suspension compression, speed loss,
-   camera shake, combo survives. This band is where the game feels generous.
+3. Near the edge → **sketchy landing:** big suspension compression, speed loss, camera shake,
+   combo survives. This band is where the game feels generous.
+4. Beyond it → **bad landing.** Heavy speed loss, hard camera shake, and a slower snap back upright
+   so it reads as a scramble.
+
+**There is no crash and no respawn.** The bike always recovers and keeps riding; lost speed is the
+entire penalty. That keeps a freeride session in flow, and it turns tolerance from the difficulty
+gate of the whole game into a feedback dial — which is a far smaller risk to carry into ramp design.
 
 Landing tolerance is the primary difficulty dial and it must be exposed in the debug panel from day one.
 
@@ -189,8 +194,8 @@ Trick detection reads the rotation accumulators at the moment of landing:
 Combined rotations name themselves ("Flip Whip", "360 Superman"). Poses stack with rotations.
 
 **Scoring**: `airTime² * airGain` + sum of trick base values, then `× comboMultiplier`.
-Multiplier increments on each clean landing and resets on crash or on being grounded for more than
-2 s. Banked score only lands when you touch down clean — so a huge run is a real gamble. Session
+Multiplier increments on each clean landing and resets on a bad landing or on being grounded for
+more than 2 s. Banked score only lands when you touch down clean — so a huge run is a real gamble. Session
 best is persisted to `localStorage`.
 
 HUD: speed, live airtime counter that grows and changes color, trick names streaming in as they
@@ -276,20 +281,43 @@ Ground probes, suspension, throttle/brake/steer, auto-pitch. Chase camera. **Gat
 rolling terrain feels good with no ramps at all. If it doesn't, tune here — every later problem is
 worse if this step is wrong.
 
-**M2 — It flies (1–2 days).** Ramp stamps (kicker, tabletop). Air state, air rotation control,
-landing tolerance, crash and respawn. Airborne camera behaviour. **Gate:** hitting a kicker and
-landing a backflip is satisfying.
+**M2 — Landings (~1 day). Done.** Three-band landing rating, speed consequence, band-dependent snap
+back, HUD feedback. No crash, no respawn.
 
-**M3 — It's a game (2 days).** Trick detection, scoring, combos, HUD, session best. Full park
+A predicted-landing arc overlay was built here and then removed: from a chase camera directly behind
+the bike it foreshortens into a near-vertical line, so the ground marker did all the work and the
+line was noise. Worth remembering before reaching for it again as a ramp-authoring tool in M3.
+
+Boost visuals also landed here, ahead of the M5 art pass, because a mechanic with no feedback is hard
+to judge: twin exhaust flames, a flickering point light that pools on the dirt, and a pooled
+ember/dust trail as instanced low-poly cubes. The light does most of the work — the terrain is
+MeshLambert, so a moving orange pool costs almost nothing and sells the effect in a way additive
+sprites cannot. It is added at startup with zero intensity so no material recompiles mid-ride.
+
+Sequenced before the ramps deliberately: landing tolerance is an *input* to ramp geometry — a landing
+slope can't be sized without knowing what counts as clean — and the jump plus boost-over-crests
+already supply enough air to tune against. Tolerance is also about *angles*, not altitude, so a
+bunny hop can present the system with a 180 deg error just as well as a tabletop can.
+
+**M3 — Ramps (~1.5 days).** Heightfield to 1 m cells (`res: 1025`, `meshStride` 4 to hold the
+triangle count) so a lip is actually resolved. Mask-blend stamps — *not* additive, or a ramp on a
+slope comes out lopsided — with approach corridors. Kicker and tabletop with geometry derived from
+the ballistic arc: a projectile returning to launch height always arrives at exactly its launch
+angle, so a landing pitched at -theta is aligned across the whole speed band. Boost widens the
+required landing zone by ~25 m on a single ramp, so landings are long slopes, not platforms. Proving
+strip first, then the park, then a validator that sweeps every feature across the speed band.
+**Gate:** hitting a kicker and landing a backflip is satisfying.
+
+**M4 — It's a game (2 days).** Trick detection, scoring, combos, HUD, session best. Full park
 layout with all feature types. Preload/pop mechanic. **Gate:** a five-minute session where you want
 to beat your score.
 
-**M4 — It looks made (2–3 days).** Real bike model with animated wheels/forks, rider rig with pose
+**M5 — It looks made (2–3 days).** Real bike model with animated wheels/forks, rider rig with pose
 blending, shadows, sky, fog, scatter props, particles (dirt kick-up, landing puff, dust trail).
 
-**M5 — It sounds made (1 day).** Engine RPM loop, wind, one-shots, mixing.
+**M6 — It sounds made (1 day).** Engine RPM loop, wind, one-shots, mixing.
 
-**M6 — Ship (1 day).** Title card, controls overlay, pause, mobile detection message, perf pass
+**M7 — Ship (1 day).** Title card, controls overlay, pause, mobile detection message, perf pass
 (instancing, shadow budget, geometry merge), Lighthouse check, static deploy.
 
 Roughly 10–12 focused days to M6; M3 is the point where it's worth showing anyone.
@@ -309,7 +337,7 @@ Roughly 10–12 focused days to M6; M3 is the point where it's worth showing any
 | Risk | Mitigation |
 |---|---|
 | Bike feel is "off" and hard to diagnose | Every constant in `tunables.ts` behind lil-gui, with save/load of presets to JSON. Gate M1 on feel before adding ramps. |
-| Landing tolerance too harsh → frustrating | Three-band landing (clean / sketchy / crash) with a generous sketchy band; tolerance in the debug panel |
+| Landing tolerance too harsh → frustrating | Three bands (clean / sketchy / bad), none fatal, generous middle; all thresholds in the debug panel |
 | Ramp transitions feel like curbs | Cubic-eased ramp faces, and a debug overlay drawing the sampled ground normal along the ride line |
 | Camera makes spins unreadable or nauseating | Camera follows smoothed *travel* direction, not bike yaw; damping tuned separately for ground and air |
 | Heightfield-only world limits features | Accepted. If a quarter-pipe becomes essential later, add mesh-based colliders as a second ground query source behind the same `sampleHeight` interface. |

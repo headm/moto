@@ -3,6 +3,7 @@ import { T } from '../core/tunables';
 import type { InputState } from '../core/input';
 import type { Heightfield } from '../world/heightfield';
 import type { BikeState } from './state';
+import { classifyLanding, bandKeepSpeed, bandShake, bandSnap } from './landing';
 
 /**
  * Arcade motocross physics. No rigid-body engine, no wheel constraints.
@@ -53,6 +54,38 @@ function approachAngle(cur: number, target: number, k: number, dt: number): numb
   return cur + wrapAngle(target - cur) * (1 - Math.exp(-k * dt));
 }
 
+/**
+ * Rate a touchdown and apply its consequence.
+ *
+ * The errors are *wrapped* differences, so landing inverted reads as ~180 deg
+ * rather than as a small number — which is exactly the bug that would hide if
+ * these were plain subtractions.
+ *
+ * There is no crash: every band recovers and keeps riding. Lost speed is the
+ * whole penalty, and camera shake rides the existing impact channel so no new
+ * plumbing is needed to make a bad landing feel bad.
+ */
+function rateLanding(s: BikeState, groundPitch: number, groundRoll: number) {
+  const pitchErr = Math.abs(THREE.MathUtils.radToDeg(wrapAngle(s.pitch - groundPitch)));
+  const rollErr = Math.abs(THREE.MathUtils.radToDeg(wrapAngle(s.roll - groundRoll)));
+  const band = classifyLanding(pitchErr, rollErr);
+  const keep = bandKeepSpeed(band);
+
+  s.vel.x *= keep;
+  s.vel.z *= keep;
+  s.lastImpact *= bandShake(band);
+  s.recovering = T.landing.snapTime;
+  s.recoverSnap = bandSnap(band);
+
+  const r = s.landing;
+  r.pending = true;
+  r.band = band;
+  r.pitchErrDeg = pitchErr;
+  r.rollErrDeg = rollErr;
+  r.airTime = s.airTime;
+  r.keptSpeed = keep;
+}
+
 export function stepBike(s: BikeState, hf: Heightfield, input: InputState, dt: number) {
   // Snapshot for render interpolation.
   s.prevPos.copy(s.pos);
@@ -88,6 +121,15 @@ export function stepBike(s: BikeState, hf: Heightfield, input: InputState, dt: n
   const hRear = hf.height(s.pos.x - fwd.x * halfWB, s.pos.z - fwd.z * halfWB);
   const groundY = (hFront + hRear) * 0.5;
 
+  // Ground orientation is computed up front rather than inside the grounded
+  // branch, because the landing rating needs it on the very frame of touchdown.
+  // Two extra height samples while airborne is a rounding error.
+  const groundPitch = Math.atan2(hFront - hRear, b.wheelBase);
+  const track = b.trackSample;
+  const hLeft = hf.height(s.pos.x - right.x * track, s.pos.z - right.z * track);
+  const hRight = hf.height(s.pos.x + right.x * track, s.pos.z + right.z * track);
+  const groundRoll = Math.atan2(hLeft - hRight, 2 * track);
+
   const pen = groundY + su.restHeight - s.pos.y;
   const contact = pen > 0;
   const wasGrounded = s.grounded;
@@ -104,7 +146,12 @@ export function stepBike(s: BikeState, hf: Heightfield, input: InputState, dt: n
     // Re-arm on landing rather than on a timer: one hop per ground contact, no
     // matter how the key is held or mashed.
     s.jumpArmed = true;
+    // airTime is still the flight duration here; the grounded branch below zeroes
+    // it. Short hops go unrated so rolling terrain doesn't spam the readout.
+    if (s.airTime >= T.landing.minAirTime) rateLanding(s, groundPitch, groundRoll);
   }
+
+  if (s.recovering > 0) s.recovering = Math.max(0, s.recovering - dt);
 
   if (s.grounded) {
     hf.normal(s.pos.x, s.pos.z, nrm);
@@ -206,18 +253,17 @@ export function stepBike(s: BikeState, hf: Heightfield, input: InputState, dt: n
     s.yaw += s.yawRate * dt;
 
     // ---- derived orientation ---------------------------------------------
-    const groundPitch = Math.atan2(hFront - hRear, b.wheelBase);
-
-    const t = b.trackSample;
-    const hLeft = hf.height(s.pos.x - right.x * t, s.pos.z - right.z * t);
-    const hRight = hf.height(s.pos.x + right.x * t, s.pos.z + right.z * t);
-    const groundRoll = Math.atan2(hLeft - hRight, 2 * t);
-
     // Turning right means yawRate < 0, and leaning right means roll > 0.
     const lean = THREE.MathUtils.clamp(-s.yawRate * speed * st.leanGain, -st.maxLean, st.maxLean);
 
-    s.pitch = approachAngle(s.pitch, groundPitch, st.pitchResponse, dt);
-    s.roll = approachAngle(s.roll, groundRoll + lean, st.rollResponse, dt);
+    // Just after a landing the band's own snap rate takes over, so a bad one
+    // visibly scrambles back upright instead of teleporting level.
+    const recovering = s.recovering > 0;
+    const pitchSnap = recovering ? s.recoverSnap : st.pitchResponse;
+    const rollSnap = recovering ? s.recoverSnap : st.rollResponse;
+
+    s.pitch = approachAngle(s.pitch, groundPitch, pitchSnap, dt);
+    s.roll = approachAngle(s.roll, groundRoll + lean, rollSnap, dt);
 
     s.wheelRate = along / b.wheelRadius;
     s.airTime = 0;

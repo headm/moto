@@ -112,6 +112,11 @@ export class ChaseCamera {
     }
   }
 
+  /** Add shake directly — used for events that aren't landing impacts. */
+  punch(amount: number) {
+    this.shake = Math.min(1, this.shake + amount);
+  }
+
   setAspect(aspect: number) {
     this.camera.aspect = aspect;
     this.camera.updateProjectionMatrix();

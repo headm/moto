@@ -45,22 +45,42 @@ That matters more than the speed suggests. A bike leaves the ground when `v² ·
 so launchability scales with the *square* of speed — boosting takes the share of this map that can
 throw you from 7% to 18%. Boost doesn't just make you faster, it turns terrain into ramps.
 
+Visually a burst lights twin exhaust flames, throws a flickering pool of orange light across the dirt
+behind you, widens the camera FOV and punches the shake. There is also a pooled ember and dust trail,
+switched off by default (`emberRate` / `dustRate` are 0) — turn either up if you want it back. All of
+it is on dials under `Boost` in the tuning panel.
+
 The jump is a bunny hop that spends whatever the suspension has stored, so one taken just after a
 compression goes noticeably higher than one from a settled bike — about 1.3 m flat, 1.6 m loaded. You
 get exactly one per ground contact, so it can't be mashed into a hover.
 
-## Current state: M1
+## Current state: M2 — landings
 
-Riding works. Terrain, suspension, steering, lean, air rotation, jump, boost, chase camera and the
-tuning panel are in. There are no ramps, no tricks, no scoring and no crashes yet — landing upside
-down just snaps the bike upright. Those are M2 and M3.
+Riding works, and landings are now rated. Terrain, suspension, steering, lean, air rotation, jump,
+boost, landing feedback and the chase camera are in. There are no ramps, no tricks and no scoring
+yet — those are M3 and M4.
 
-Boost is deliberately ahead of the ramps: because launchability goes as v², it converts existing
+**Landings are never fatal.** There is no crash and no respawn: the bike always snaps back upright
+and carries on. Every landing over 0.25 s of air gets rated on the angle between the bike and the
+ground it touches, and the only consequence is speed:
+
+| Band | Angle | Keeps |
+|---|---|---|
+| Clean | under 25° pitch / 30° roll | all of it |
+| Sketchy | up to 50° / 60° | 80% |
+| Bad | beyond | 45% |
+
+A worse landing also shakes the camera harder and snaps back more slowly, so it reads as a scramble
+rather than a teleport.
+
+Landings came before ramps because tolerance is an *input* to ramp geometry — you can't size a
+landing slope without knowing what counts as clean — and because the jump and boost already provide
+enough air to tune against. Boost is deliberately ahead of the ramps: because launchability goes as v², it converts existing
 terrain into jumps, which is the cheapest way to find out how much air is fun *before* committing to
 ramp geometry. It currently has no supply cost beyond its cooldown; earning charges from clean
 landings comes with the scoring loop in M3.
 
-**The tuning panel is the point of this milestone.** Press `H`, and change things while riding —
+**The tuning panel is the point of these milestones.** Press `H`, and change things while riding —
 every number that affects feel is in there, and nothing downstream hardcodes a constant. `Presets →
 Save to browser` keeps a setup across reloads; `Reset to defaults` gets you back.
 

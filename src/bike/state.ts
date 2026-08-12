@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { T } from '../core/tunables';
 import type { Heightfield } from '../world/heightfield';
+import { createLandingReport, type LandingReport } from './landing';
 
 /**
  * The bike is one body with two probe points, not two constrained wheels.
@@ -28,6 +29,12 @@ export interface BikeState {
   susp: number;
 
   grounded: boolean;
+  /** How the most recent landing was rated. */
+  landing: LandingReport;
+  /** Seconds left of the post-landing snap-back window. */
+  recovering: number;
+  /** Orientation snap rate in effect while recovering. */
+  recoverSnap: number;
   /** Seconds of boost burst left. Greater than zero means boosting. */
   boostRemaining: number;
   /** Seconds until another boost may be started. */
@@ -64,6 +71,9 @@ export function createBikeState(): BikeState {
     wheelRate: 0,
     susp: 0,
     grounded: true,
+    landing: createLandingReport(),
+    recovering: 0,
+    recoverSnap: 0,
     boostRemaining: 0,
     boostCooldown: 0,
     jumpArmed: true,
@@ -91,6 +101,9 @@ export function resetBike(s: BikeState, hf: Heightfield) {
   s.wheelRate = 0;
   s.susp = 0;
   s.grounded = true;
+  s.landing.pending = false;
+  s.recovering = 0;
+  s.recoverSnap = 0;
   s.boostRemaining = 0;
   s.boostCooldown = 0;
   s.jumpArmed = true;

@@ -4,6 +4,14 @@
  * frames where nothing changed.
  */
 
+import type { LandingReport } from '../bike/landing';
+
+const BAND_LABEL = {
+  clean: 'CLEAN LANDING',
+  sketchy: 'SKETCHY',
+  bad: 'BAD LANDING',
+} as const;
+
 function el<T extends HTMLElement>(id: string): T {
   const node = document.getElementById(id);
   if (!node) throw new Error(`HUD element #${id} missing from index.html`);
@@ -18,6 +26,12 @@ export class Hud {
   private hintEl = el('hint');
   private boostEl = el('boost');
   private boostFillEl = el('boostfill');
+  private landingEl = el('landing');
+  private landingBandEl = el('landingband');
+  private landingDetailEl = el('landingdetail');
+
+  /** Seconds the landing banner stays up. */
+  private landingTimer = 0;
 
   private lastBoostState = 'ready';
   private lastSpeed = -1;
@@ -33,6 +47,19 @@ export class Hud {
     window.setTimeout(() => this.hintEl.classList.add('fade'), 4000);
   }
 
+  private showLanding(r: LandingReport) {
+    this.landingBandEl.textContent = BAND_LABEL[r.band];
+    // The angle errors are what you tune the bands against, so they're on screen
+    // rather than in the console.
+    const lost = Math.round((1 - r.keptSpeed) * 100);
+    this.landingDetailEl.textContent =
+      `${r.pitchErrDeg.toFixed(0)}° pitch  ${r.rollErrDeg.toFixed(0)}° roll` +
+      `  ·  ${r.airTime.toFixed(2)}s air` +
+      (lost > 0 ? `  ·  -${lost}% speed` : '');
+    this.landingEl.className = `landing show ${r.band}`;
+    this.landingTimer = 1.6;
+  }
+
   update(opts: {
     speed: number;
     airTime: number;
@@ -41,10 +68,21 @@ export class Hud {
     /** 0..1 — burst remaining while active, cooldown progress while recovering. */
     boostFill: number;
     boostState: 'ready' | 'active' | 'cooling';
+    /** Consumed here — `pending` is cleared once shown. */
+    landing: LandingReport;
     fps: number;
     frameDt: number;
     tris: number;
   }) {
+    if (opts.landing.pending) {
+      opts.landing.pending = false;
+      this.showLanding(opts.landing);
+    }
+    if (this.landingTimer > 0) {
+      this.landingTimer -= opts.frameDt;
+      if (this.landingTimer <= 0) this.landingEl.classList.remove('show');
+    }
+
     if (opts.boostState !== this.lastBoostState) {
       this.lastBoostState = opts.boostState;
       this.boostEl.className = `boost ${opts.boostState}`;

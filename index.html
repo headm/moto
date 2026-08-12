@@ -95,6 +95,33 @@
       }
       .air span { font-size: 12px; color: var(--hud-dim); letter-spacing: 2px; }
 
+      .landing {
+        position: absolute;
+        left: 50%;
+        top: 27%;
+        transform: translateX(-50%);
+        text-align: center;
+        opacity: 0;
+        transition: opacity 220ms ease-out;
+      }
+      .landing.show { opacity: 1; }
+      .landing b {
+        display: block;
+        font-size: 26px;
+        font-weight: 700;
+        letter-spacing: 1px;
+      }
+      .landing span {
+        display: block;
+        font-size: 11px;
+        color: var(--hud-dim);
+        letter-spacing: 1px;
+        white-space: nowrap;
+      }
+      .landing.clean b { color: #6ee06e; }
+      .landing.sketchy b { color: #ffb340; }
+      .landing.bad b { color: #e8563f; }
+
       #stats {
         position: absolute;
         right: 18px;
@@ -147,6 +174,7 @@
         <div class="bar"><i id="boostfill"></i></div>
       </div>
       <div class="air" id="air"><b id="airtime">0.00</b><span>AIR TIME</span></div>
+      <div class="landing" id="landing"><b id="landingband">CLEAN</b><span id="landingdetail"></span></div>
       <div id="stats"></div>
     </div>
     <script type="module" src="/src/main.ts"></script>

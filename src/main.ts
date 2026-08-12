@@ -9,6 +9,7 @@ import { createBikeState, resetBike, groundSpeed } from './bike/state';
 import { stepBike } from './bike/physics';
 import { createBikeModel, syncBikeModel, lerpAngle } from './bike/model';
 import { ChaseCamera } from './game/camera';
+import { BoostFx } from './game/boostFx';
 import { Hud } from './ui/hud';
 import { buildGui } from './ui/debug';
 
@@ -46,6 +47,12 @@ resetBike(bike, hf);
 
 const bikeModel = createBikeModel();
 scene.add(bikeModel.root);
+
+// Particles live in world space; the flames and exhaust light ride the chassis
+// so they inherit pitch, roll and yaw for free.
+const boostFx = new BoostFx();
+scene.add(boostFx.particles);
+bikeModel.chassis.add(boostFx.rig);
 
 const chase = new ChaseCamera(window.innerWidth / window.innerHeight);
 chase.reset(bike.pos, bike.yaw);
@@ -122,7 +129,10 @@ const loop = createLoop({
     syncBikeModel(bikeModel, interpPos, yaw, pitch, roll, susp, spin);
 
     const boosting = bike.boostRemaining > 0;
+    boostFx.update(frameDt, boosting, interpPos, bike.vel, yaw, pitch, roll, bike.grounded, hf);
+
     chase.update(frameDt, interpPos, yaw, bike.vel, bike.airTime, hf, bike.lastImpact, boosting);
+    if (boostFx.justIgnited) chase.punch(T.boost.ignitionPunch);
     bike.lastImpact = 0;
 
     updateSky(sky, interpPos);
@@ -138,6 +148,7 @@ const loop = createLoop({
           ? 1 - bike.boostCooldown / Math.max(1e-4, T.boost.cooldown)
           : 1,
       boostState: boosting ? 'active' : bike.boostCooldown > 0 ? 'cooling' : 'ready',
+      landing: bike.landing,
       fps: loop.fps,
       frameDt,
       tris: triangleCount,

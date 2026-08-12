@@ -57,12 +57,30 @@ export function buildGui(cb: DebugCallbacks): GUI {
   susp.add(T.susp, 'maxAccel', 80, 1200, 10);
   susp.add(T.susp, 'stickDistance', 0, 0.4, 0.005);
 
+  const landing = gui.addFolder('Landing').close();
+  landing.add(T.landing, 'cleanPitch', 2, 90, 1);
+  landing.add(T.landing, 'cleanRoll', 2, 90, 1);
+  landing.add(T.landing, 'sketchyPitch', 5, 180, 1);
+  landing.add(T.landing, 'sketchyRoll', 5, 180, 1);
+  landing.add(T.landing, 'keepSketchy', 0, 1, 0.01);
+  landing.add(T.landing, 'keepBad', 0, 1, 0.01);
+  landing.add(T.landing, 'snapSketchy', 1, 30, 0.5);
+  landing.add(T.landing, 'snapBad', 1, 30, 0.5);
+  landing.add(T.landing, 'snapTime', 0, 2, 0.05);
+  landing.add(T.landing, 'minAirTime', 0, 1.5, 0.05);
+
   const boost = gui.addFolder('Boost').close();
   boost.add(T.boost, 'duration', 0.2, 10, 0.1);
   boost.add(T.boost, 'cooldown', 0, 10, 0.1);
   boost.add(T.boost, 'accelMul', 1, 4, 0.05);
   boost.add(T.boost, 'maxSpeedMul', 1, 3, 0.05);
   boost.add(T.boost, 'fovBonus', 0, 25, 0.5);
+  boost.add(T.boost, 'flameLength', 0, 3, 0.05);
+  boost.add(T.boost, 'lightIntensity', 0, 80, 1);
+  boost.add(T.boost, 'lightRange', 1, 20, 0.5);
+  boost.add(T.boost, 'emberRate', 0, 200, 5);
+  boost.add(T.boost, 'dustRate', 0, 200, 5);
+  boost.add(T.boost, 'ignitionPunch', 0, 1, 0.05);
 
   const steer = gui.addFolder('Steering & lean').close();
   steer.add(T.steer, 'maxYawRate', 0.4, 5, 0.05);

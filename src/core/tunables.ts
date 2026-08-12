@@ -100,7 +100,67 @@ export const DEFAULTS = {
     accelMul: 1.65,
     maxSpeedMul: 1.35,
     /** Extra camera FOV while boosting, so it reads as speed and not as a number. */
-    fovBonus: 6,
+    fovBonus: 4,
+
+    /** Exhaust flame length multiplier. */
+    flameLength: 1,
+    /**
+     * The exhaust light is the effect that sells the boost — a moving pool of
+     * orange on the dirt, which no amount of additive sprite work can fake. It is
+     * also the easiest one to overdo: `range` controls how wide the pool spreads,
+     * and a wide pool reads as a floodlight rather than an exhaust.
+     */
+    lightIntensity: 12,
+    lightRange: 6.5,
+    /**
+     * Embers per second out of the pipes, and dust per second off the rear wheel.
+     * These govern the ignition burst too, so zero really is zero — the flames and
+     * the exhaust light carry the effect on their own.
+     */
+    emberRate: 0,
+    dustRate: 0,
+    /** Camera punch when a burst ignites. */
+    ignitionPunch: 0.22,
+  },
+
+  landing: {
+    /**
+     * Landings are rated, never fatal. The bike always snaps back and keeps
+     * going, so these thresholds are a feedback and speed dial rather than a
+     * difficulty gate — which is also why the sketchy band is deliberately wide.
+     *
+     * Errors are the angle between the bike and the ground it touches, in degrees.
+     */
+    cleanPitch: 25,
+    cleanRoll: 30,
+    sketchyPitch: 50,
+    sketchyRoll: 60,
+
+    /** Fraction of horizontal speed kept. This is the whole consequence. */
+    keepClean: 1,
+    keepSketchy: 0.8,
+    keepBad: 0.45,
+
+    /** Camera shake multiplier, applied through the existing impact channel. */
+    shakeClean: 1,
+    shakeSketchy: 1.6,
+    shakeBad: 2.4,
+
+    /**
+     * How fast orientation snaps back to the ground, per band. A slower snap on a
+     * bad landing reads as a scramble rather than a teleport.
+     */
+    snapClean: 13,
+    snapSketchy: 9,
+    snapBad: 6,
+    /** Seconds the band's snap rate stays in effect after touchdown. */
+    snapTime: 0.45,
+
+    /**
+     * Flights shorter than this aren't rated at all. Without it, every micro-hop
+     * over rolling terrain fires a landing banner.
+     */
+    minAirTime: 0.25,
   },
 
   steer: {
