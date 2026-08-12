@@ -223,8 +223,9 @@ needed to fly the bike.
 | Steer (spin in air) | A D | Left stick X |
 | Lean back (backflip) | ↓ or K | Left stick back |
 | Lean forward (frontflip) | ↑ or I | Left stick forward |
-| Barrel roll | ← → (or Q / E) | Bumpers |
+| Barrel roll | ← → | Bumpers |
 | Jump | Space | A |
+| Boost | Shift (either) or E | B |
 | Trick pose *(M3)* | 1–4 | B / X / Y |
 | Respawn | R | Start |
 | Tuning panel | H | — |
@@ -236,6 +237,20 @@ the convention every MX game uses and the only one that survives being played ra
 re-armed on landing rather than on a timer, so a held or mashed key can't hover. It overlaps with the
 preload/pop mechanic below, and the two should probably merge in M3: hold Space to crouch, release at
 the lip to pop. That also frees the trick poses to sit on 1–4 alone.
+
+**Boost** is a tap, not a hold — a 2.5 s burst multiplying engine force and top speed (1.65× / 1.35×),
+then a cooldown. Raising `maxSpeed` alongside acceleration is not optional: engine force is scaled by
+`1 - along/maxSpeed`, so extra acceleration alone does nothing at exactly the moment you want it.
+Ground-only activation, and an airborne press is ignored rather than consumed, because losing a boost
+to a mis-tap in the air feels awful. A burst already running keeps counting through the air so
+launching mid-boost isn't punished.
+
+It is deliberately sequenced **before** the ramps. Launchability goes as `v²`, so boost converts
+existing terrain into jumps — measured, it takes this map from 7% to 18% launchable. That makes it the
+cheapest possible way to learn how much air is actually fun before ramp geometry is committed, which
+de-risks M2. Three keys are bound at once (`RShift`, `LShift`, `E`) to be settled by riding; a tap
+rather than a hold means which hand owns it barely matters. Supply is currently just the cooldown —
+charges earned from clean landings arrive with the M3 scoring loop.
 
 Input is polled into a normalized `InputState` each physics step, never read directly in physics
 code — keeps the door open for replays and ghost recording.

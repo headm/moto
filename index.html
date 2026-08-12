@@ -44,6 +44,37 @@
       }
       .speedo span { font-size: 13px; color: var(--hud-dim); letter-spacing: 1px; }
 
+      .boost {
+        position: absolute;
+        left: 30px;
+        bottom: 98px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+      .boost label {
+        font-size: 11px;
+        letter-spacing: 2px;
+        color: var(--hud-dim);
+      }
+      .boost .bar {
+        width: 130px;
+        height: 6px;
+        border-radius: 3px;
+        background: rgba(0, 0, 0, 0.4);
+        overflow: hidden;
+      }
+      .boost i {
+        display: block;
+        height: 100%;
+        width: 100%;
+        background: #6b6560;
+      }
+      .boost.ready label { color: var(--hud); }
+      .boost.ready i { background: var(--accent); }
+      .boost.active label { color: var(--accent); font-weight: 700; }
+      .boost.active i { background: #fff8ea; }
+
       .air {
         position: absolute;
         left: 50%;
@@ -105,11 +136,16 @@
       <div id="hint">
         <kbd>W</kbd><kbd>S</kbd> throttle / brake &nbsp; <kbd>A</kbd><kbd>D</kbd> steer &nbsp;
         <kbd>Space</kbd> jump<br />
+        <kbd>Shift</kbd><kbd>E</kbd> boost — tap it, on the ground<br />
         <kbd>↑</kbd><kbd>↓</kbd> lean fwd / back &nbsp; <kbd>←</kbd><kbd>→</kbd> roll
         <span style="opacity: 0.6">(in the air)</span><br />
         <kbd>R</kbd> respawn &nbsp; <kbd>H</kbd> hide tuning panel
       </div>
       <div class="speedo"><b id="speed">0</b><span>KM/H</span></div>
+      <div class="boost ready" id="boost">
+        <label>BOOST</label>
+        <div class="bar"><i id="boostfill"></i></div>
+      </div>
       <div class="air" id="air"><b id="airtime">0.00</b><span>AIR TIME</span></div>
       <div id="stats"></div>
     </div>

@@ -28,6 +28,10 @@ export interface BikeState {
   susp: number;
 
   grounded: boolean;
+  /** Seconds of boost burst left. Greater than zero means boosting. */
+  boostRemaining: number;
+  /** Seconds until another boost may be started. */
+  boostCooldown: number;
   /**
    * Whether a jump is available. Set on every landing and spent on jumping, so
    * you get exactly one hop per ground contact however the key is held or mashed.
@@ -60,6 +64,8 @@ export function createBikeState(): BikeState {
     wheelRate: 0,
     susp: 0,
     grounded: true,
+    boostRemaining: 0,
+    boostCooldown: 0,
     jumpArmed: true,
     airTime: 0,
     groundTime: 0,
@@ -85,6 +91,8 @@ export function resetBike(s: BikeState, hf: Heightfield) {
   s.wheelRate = 0;
   s.susp = 0;
   s.grounded = true;
+  s.boostRemaining = 0;
+  s.boostCooldown = 0;
   s.jumpArmed = true;
   s.airTime = 0;
   s.groundTime = 0;
@@ -97,6 +105,11 @@ export function resetBike(s: BikeState, hf: Heightfield) {
   s.prevRoll = s.roll;
   s.prevSusp = 0;
   s.prevWheelSpin = 0;
+}
+
+/** True while a boost burst is running. */
+export function isBoosting(s: BikeState): boolean {
+  return s.boostRemaining > 0;
 }
 
 /** Horizontal speed, m/s. */

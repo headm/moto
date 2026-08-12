@@ -121,7 +121,8 @@ const loop = createLoop({
 
     syncBikeModel(bikeModel, interpPos, yaw, pitch, roll, susp, spin);
 
-    chase.update(frameDt, interpPos, yaw, bike.vel, bike.airTime, hf, bike.lastImpact);
+    const boosting = bike.boostRemaining > 0;
+    chase.update(frameDt, interpPos, yaw, bike.vel, bike.airTime, hf, bike.lastImpact, boosting);
     bike.lastImpact = 0;
 
     updateSky(sky, interpPos);
@@ -131,6 +132,12 @@ const loop = createLoop({
       airTime: bike.airTime,
       airPeak: bike.airPeak,
       grounded: bike.grounded,
+      boostFill: boosting
+        ? bike.boostRemaining / T.boost.duration
+        : bike.boostCooldown > 0
+          ? 1 - bike.boostCooldown / Math.max(1e-4, T.boost.cooldown)
+          : 1,
+      boostState: boosting ? 'active' : bike.boostCooldown > 0 ? 'cooling' : 'ready',
       fps: loop.fps,
       frameDt,
       tris: triangleCount,

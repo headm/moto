@@ -78,6 +78,31 @@ export const DEFAULTS = {
     stickDistance: 0.09,
   },
 
+  boost: {
+    /** Seconds the burst lasts. */
+    duration: 2.5,
+    /**
+     * Seconds after a burst ends before another can start. Charges earned from
+     * clean landings replace this later; for now the cooldown is the only supply
+     * limit, and it exists so bursts can't be stacked into one absurd launch.
+     */
+    cooldown: 1.5,
+    /**
+     * Multipliers on engineAccel and maxSpeed while boosting — multipliers rather
+     * than absolutes so they survive retuning the base bike. Raising maxSpeed is
+     * not optional: engine force is scaled by `1 - along/maxSpeed`, so extra
+     * acceleration alone does nothing at the point you most want it.
+     *
+     * 1.65x / 1.35x takes terminal speed from ~26 to ~36 m/s. Launchability goes
+     * as v^2, so that is roughly a 1.8x curvature budget — a lot more of the map
+     * becomes a jump.
+     */
+    accelMul: 1.65,
+    maxSpeedMul: 1.35,
+    /** Extra camera FOV while boosting, so it reads as speed and not as a number. */
+    fovBonus: 6,
+  },
+
   steer: {
     maxYawRate: 2.2,
     yawResponse: 9,
@@ -116,7 +141,8 @@ export const DEFAULTS = {
     travelDamp: 5,
     fovBase: 62,
     fovGain: 0.42,
-    fovMax: 82,
+    /** Headroom above the ~73 deg an unboosted top speed reaches, so boost isn't clipped. */
+    fovMax: 92,
     shakeGain: 0.06,
     shakeDecay: 6,
     minClearance: 1.6,

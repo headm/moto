@@ -57,6 +57,13 @@ export function buildGui(cb: DebugCallbacks): GUI {
   susp.add(T.susp, 'maxAccel', 80, 1200, 10);
   susp.add(T.susp, 'stickDistance', 0, 0.4, 0.005);
 
+  const boost = gui.addFolder('Boost').close();
+  boost.add(T.boost, 'duration', 0.2, 10, 0.1);
+  boost.add(T.boost, 'cooldown', 0, 10, 0.1);
+  boost.add(T.boost, 'accelMul', 1, 4, 0.05);
+  boost.add(T.boost, 'maxSpeedMul', 1, 3, 0.05);
+  boost.add(T.boost, 'fovBonus', 0, 25, 0.5);
+
   const steer = gui.addFolder('Steering & lean').close();
   steer.add(T.steer, 'maxYawRate', 0.4, 5, 0.05);
   steer.add(T.steer, 'yawResponse', 1, 25, 0.5);

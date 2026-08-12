@@ -28,13 +28,22 @@ WASD rides the bike, the arrow cluster rotates it.
 | `W` / `S` | Throttle / brake (hold `S` at a standstill to reverse) |
 | `A` `D` | Steer on the ground, spin in the air |
 | `↓` / `↑` | Lean back / forward — pull back to loop backwards |
-| `←` / `→` | Barrel roll (`Q` / `E` still work too) |
+| `←` / `→` | Barrel roll |
 | `Space` | Jump |
+| `Shift` (either) or `E` | Boost — tap it, ground only |
 | `R` | Respawn |
 | `H` | Show/hide the tuning panel |
 
 A gamepad works too: triggers for throttle and brake, left stick to steer and pitch, bumpers to roll,
-`A` to jump.
+`A` to jump, `B` to boost.
+
+**Boost** is a tap, not a hold: one press gives a 2.5 s burst that takes you from about 91 to 122 km/h,
+then a 1.5 s cooldown. It only starts on the ground, and an airborne press is ignored rather than
+consumed. A burst already running keeps going through the air, so launching mid-boost isn't punished.
+
+That matters more than the speed suggests. A bike leaves the ground when `v² · curvature > gravity`,
+so launchability scales with the *square* of speed — boosting takes the share of this map that can
+throw you from 7% to 18%. Boost doesn't just make you faster, it turns terrain into ramps.
 
 The jump is a bunny hop that spends whatever the suspension has stored, so one taken just after a
 compression goes noticeably higher than one from a settled bike — about 1.3 m flat, 1.6 m loaded. You
@@ -42,9 +51,14 @@ get exactly one per ground contact, so it can't be mashed into a hover.
 
 ## Current state: M1
 
-Riding works. Terrain, suspension, steering, lean, air rotation, chase camera and the tuning panel
-are in. There are no ramps, no tricks, no scoring and no crashes yet — landing upside down just
-snaps the bike upright. Those are M2 and M3.
+Riding works. Terrain, suspension, steering, lean, air rotation, jump, boost, chase camera and the
+tuning panel are in. There are no ramps, no tricks, no scoring and no crashes yet — landing upside
+down just snaps the bike upright. Those are M2 and M3.
+
+Boost is deliberately ahead of the ramps: because launchability goes as v², it converts existing
+terrain into jumps, which is the cheapest way to find out how much air is fun *before* committing to
+ramp geometry. It currently has no supply cost beyond its cooldown; earning charges from clean
+landings comes with the scoring loop in M3.
 
 **The tuning panel is the point of this milestone.** Press `H`, and change things while riding —
 every number that affects feel is in there, and nothing downstream hardcodes a constant. `Presets →

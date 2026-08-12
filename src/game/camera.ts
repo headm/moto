@@ -52,6 +52,7 @@ export class ChaseCamera {
     airTime: number,
     hf: Heightfield,
     impact: number,
+    boosting: boolean,
   ) {
     const c = T.cam;
     this.clock += dt;
@@ -100,7 +101,10 @@ export class ChaseCamera {
     }
     this.camera.lookAt(this.look);
 
-    const fovTarget = Math.min(c.fovMax, c.fovBase + speed * c.fovGain + airMix * 4);
+    // The FOV bonus is what makes a boost read as a boost rather than as the
+    // speedo counting higher.
+    const boostKick = boosting ? T.boost.fovBonus : 0;
+    const fovTarget = Math.min(c.fovMax, c.fovBase + speed * c.fovGain + airMix * 4 + boostKick);
     this.fov += (fovTarget - this.fov) * (1 - Math.exp(-4 * dt));
     if (Math.abs(this.camera.fov - this.fov) > 0.02) {
       this.camera.fov = this.fov;

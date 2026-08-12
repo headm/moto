@@ -18,6 +18,8 @@ export interface InputState {
   roll: number;
   /** True for exactly one frame after the jump key is pressed. */
   jump: boolean;
+  /** True for exactly one frame after a boost key is pressed. */
+  boost: boolean;
   /** True for exactly one frame after the respawn key is pressed. */
   respawn: boolean;
 }
@@ -38,6 +40,7 @@ export class Input {
     pitch: 0,
     roll: 0,
     jump: false,
+    boost: false,
     respawn: false,
   };
 
@@ -47,7 +50,9 @@ export class Input {
   private keys = new Set<string>();
   private respawnEdge = false;
   private jumpEdge = false;
+  private boostEdge = false;
   private padJumpWasDown = false;
+  private padBoostWasDown = false;
   private gamepadIndex: number | null = null;
 
   constructor() {
@@ -74,6 +79,11 @@ export class Input {
       if (e.code === 'KeyR') this.respawnEdge = true;
       // Edge-triggered, so holding the key down is one jump, not a hover.
       if (e.code === 'Space') this.jumpEdge = true;
+      // Three bindings on purpose, to be tried against each other. Boost is a tap
+      // rather than a hold, so which hand owns it barely matters ergonomically.
+      if (e.code === 'ShiftRight' || e.code === 'ShiftLeft' || e.code === 'KeyE') {
+        this.boostEdge = true;
+      }
       this.onAnyKey?.();
     }
     this.keys.add(e.code);
@@ -110,9 +120,13 @@ export class Input {
     s.steer = this.held('KeyD') - this.held('KeyA');
     // Pull back to loop backwards, like every MX game ever made.
     s.pitch = this.held('ArrowDown', 'KeyK') - this.held('ArrowUp', 'KeyI');
-    s.roll = this.held('ArrowRight', 'KeyE') - this.held('ArrowLeft', 'KeyQ');
+    // Roll is arrows only now: E became boost, and leaving Q as a lone alias for
+    // one direction would be worse than having none.
+    s.roll = this.held('ArrowRight') - this.held('ArrowLeft');
     s.jump = this.jumpEdge;
     this.jumpEdge = false;
+    s.boost = this.boostEdge;
+    this.boostEdge = false;
     s.respawn = this.respawnEdge;
     this.respawnEdge = false;
 
@@ -141,6 +155,10 @@ export class Input {
     const padJump = pad.buttons[0]?.pressed ?? false;
     if (padJump && !this.padJumpWasDown) s.jump = true;
     this.padJumpWasDown = padJump;
+
+    const padBoost = pad.buttons[1]?.pressed ?? false;
+    if (padBoost && !this.padBoostWasDown) s.boost = true;
+    this.padBoostWasDown = padBoost;
 
     if (pad.buttons[9]?.pressed) s.respawn = true;
   }

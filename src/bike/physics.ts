@@ -66,6 +66,18 @@ export function stepBike(s: BikeState, hf: Heightfield, input: InputState, dt: n
   const su = T.susp;
   const st = T.steer;
   const ai = T.air;
+  const bo = T.boost;
+
+  // Boost timers run everywhere, not just on the ground: a burst started on the
+  // ground keeps counting through the air, so launching mid-boost isn't punished.
+  // Drive force only applies while grounded anyway, so it costs nothing to let it
+  // run, and you land still boosting.
+  if (s.boostRemaining > 0) {
+    s.boostRemaining = Math.max(0, s.boostRemaining - dt);
+    if (s.boostRemaining === 0) s.boostCooldown = bo.cooldown;
+  } else if (s.boostCooldown > 0) {
+    s.boostCooldown = Math.max(0, s.boostCooldown - dt);
+  }
 
   fwd.set(Math.sin(s.yaw), 0, Math.cos(s.yaw));
   right.set(-Math.cos(s.yaw), 0, Math.sin(s.yaw));
@@ -145,19 +157,31 @@ export function stepBike(s: BikeState, hf: Heightfield, input: InputState, dt: n
     s.vel.x += gn * nrm.x;
     s.vel.z += gn * nrm.z;
 
+    // ---- boost ------------------------------------------------------------
+    // Ground only. An airborne press is ignored rather than consumed: losing a
+    // boost to a mis-tap in mid-air feels awful.
+    if (input.boost && s.boostRemaining <= 0 && s.boostCooldown <= 0) {
+      s.boostRemaining = bo.duration;
+    }
+    const boosting = s.boostRemaining > 0;
+
     // ---- drive, brake, grip ----------------------------------------------
     let along = s.vel.x * fwd.x + s.vel.z * fwd.z;
     let lat = s.vel.x * right.x + s.vel.z * right.z;
 
-    if (input.throttle > 0) {
-      const headroom = Math.max(0, 1 - Math.max(0, along) / b.maxSpeed);
-      along += input.throttle * b.engineAccel * headroom * dt;
+    // Boosting implies wide open, so a burst still works while coasting.
+    const throttle = boosting ? 1 : input.throttle;
+    if (throttle > 0) {
+      const maxSpeed = boosting ? b.maxSpeed * bo.maxSpeedMul : b.maxSpeed;
+      const accel = boosting ? b.engineAccel * bo.accelMul : b.engineAccel;
+      const headroom = Math.max(0, 1 - Math.max(0, along) / maxSpeed);
+      along += throttle * accel * headroom * dt;
     }
 
     if (input.brake > 0) {
       if (along > 0) {
         along = Math.max(0, along - input.brake * b.brakeAccel * dt);
-      } else if (input.throttle === 0) {
+      } else if (throttle === 0) {
         // Reverse, purely so you can unstick yourself from a hollow.
         along = Math.max(-b.maxReverse, along - input.brake * b.reverseAccel * dt);
       }

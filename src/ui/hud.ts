@@ -16,7 +16,10 @@ export class Hud {
   private airTimeEl = el('airtime');
   private statsEl = el('stats');
   private hintEl = el('hint');
+  private boostEl = el('boost');
+  private boostFillEl = el('boostfill');
 
+  private lastBoostState = 'ready';
   private lastSpeed = -1;
   private lastAir = '';
   private airVisible = false;
@@ -35,10 +38,19 @@ export class Hud {
     airTime: number;
     airPeak: number;
     grounded: boolean;
+    /** 0..1 — burst remaining while active, cooldown progress while recovering. */
+    boostFill: number;
+    boostState: 'ready' | 'active' | 'cooling';
     fps: number;
     frameDt: number;
     tris: number;
   }) {
+    if (opts.boostState !== this.lastBoostState) {
+      this.lastBoostState = opts.boostState;
+      this.boostEl.className = `boost ${opts.boostState}`;
+    }
+    this.boostFillEl.style.width = `${(opts.boostFill * 100).toFixed(1)}%`;
+
     const kmh = Math.round(opts.speed * 3.6);
     if (kmh !== this.lastSpeed) {
       this.lastSpeed = kmh;

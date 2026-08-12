@@ -27,8 +27,30 @@ const idle = (): InputState => ({
   pitch: 0,
   roll: 0,
   jump: false,
+  boost: false,
   respawn: false,
 });
+
+/**
+ * Fraction of the world that can throw the bike at a given speed. A wheel leaves
+ * the ground when the upward acceleration needed to follow a convex crest exceeds
+ * gravity, i.e. v^2 * curvature > g — so this scales with the *square* of speed,
+ * which is why boost converts terrain into ramps rather than just going faster.
+ */
+function launchableFraction(hf: Heightfield, v: number): number {
+  const ds = 2.5;
+  let hits = 0;
+  let total = 0;
+  for (let x = -300; x <= 300; x += 7) {
+    for (let z = -300; z <= 300; z += ds) {
+      const curvature =
+        (hf.height(x, z + ds) - 2 * hf.height(x, z) + hf.height(x, z - ds)) / (ds * ds);
+      if (-curvature * v * v > T.bike.gravity) hits++;
+      total++;
+    }
+  }
+  return hits / total;
+}
 
 let failures = 0;
 
@@ -330,7 +352,94 @@ console.log(
   console.log('');
 }
 
-// --- 5. long random session -----------------------------------------------
+// --- 5. boost --------------------------------------------------------------
+{
+  /** Run to terminal speed, then optionally tap boost and keep driving. */
+  function drive(seconds: number, opts: { boostAt?: number; airborneTap?: boolean } = {}) {
+    const s = createBikeState();
+    resetBike(s, hf);
+    const input = idle();
+    input.throttle = 1;
+    for (let i = 0; i < 900; i++) stepBike(s, hf, input, STEP);
+    const baseSpeed = groundSpeed(s);
+
+    if (opts.airborneTap) {
+      // Put it in the air first, then tap: the press must be ignored outright,
+      // not swallowed.
+      s.vel.y = 14;
+      for (let i = 0; i < 12; i++) stepBike(s, hf, input, STEP);
+    }
+
+    let peak = baseSpeed;
+    let tapped = false;
+    let startedBoost = false;
+    const steps = Math.round(seconds / STEP);
+    for (let i = 0; i < steps; i++) {
+      const t = i * STEP;
+      input.boost = opts.boostAt !== undefined && !tapped && t >= opts.boostAt;
+      if (input.boost) tapped = true;
+      stepBike(s, hf, input, STEP);
+      if (s.boostRemaining > 0) startedBoost = true;
+      peak = Math.max(peak, groundSpeed(s));
+    }
+    return { baseSpeed, peak, startedBoost, endSpeed: groundSpeed(s), state: s };
+  }
+
+  const base = drive(4);
+  const boosted = drive(4, { boostAt: 0.2 });
+  const gain = boosted.peak / base.peak;
+
+  check(
+    'boost meaningfully raises top speed',
+    gain > 1.2,
+    `${(base.peak * 3.6).toFixed(0)} -> ${(boosted.peak * 3.6).toFixed(0)} km/h (${gain.toFixed(2)}x)`,
+  );
+  check(
+    'and it wears off',
+    boosted.endSpeed < boosted.peak * 0.95,
+    `${(boosted.peak * 3.6).toFixed(0)} peak -> ${(boosted.endSpeed * 3.6).toFixed(0)} km/h after ${T.boost.duration + T.boost.cooldown}s`,
+  );
+
+  const inAir = drive(1.5, { boostAt: 0.05, airborneTap: true });
+  check('airborne tap is ignored, not consumed', !inAir.startedBoost, 'no burst started in the air');
+
+  // Cooldown: a second tap immediately after the first burst ends must do nothing.
+  {
+    const s = createBikeState();
+    resetBike(s, hf);
+    const input = idle();
+    input.throttle = 1;
+    for (let i = 0; i < 600; i++) stepBike(s, hf, input, STEP);
+
+    let bursts = 0;
+    let wasBoosting = false;
+    // Mash the key every other step for the whole window.
+    for (let i = 0; i < Math.round((T.boost.duration + T.boost.cooldown + 1) / STEP); i++) {
+      input.boost = i % 2 === 0;
+      stepBike(s, hf, input, STEP);
+      const now = s.boostRemaining > 0;
+      if (now && !wasBoosting) bursts++;
+      wasBoosting = now;
+    }
+    check(
+      'mashing cannot stack bursts',
+      bursts <= 2,
+      `${bursts} burst(s) over ${(T.boost.duration + T.boost.cooldown + 1).toFixed(1)}s of mashing`,
+    );
+  }
+
+  // The reason boost belongs in before ramps do.
+  const baseLaunch = launchableFraction(hf, base.peak);
+  const boostLaunch = launchableFraction(hf, boosted.peak);
+  check(
+    'boost turns terrain into ramps',
+    boostLaunch > baseLaunch * 1.4,
+    `${(baseLaunch * 100).toFixed(1)}% -> ${(boostLaunch * 100).toFixed(1)}% of the map can launch you`,
+  );
+  console.log('');
+}
+
+// --- 6. long random session -----------------------------------------------
 {
   // Deterministic pseudo-random rider, changing input four times a second.
   let seed = 20260812;
