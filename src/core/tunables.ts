@@ -110,8 +110,8 @@ export const DEFAULTS = {
      * also the easiest one to overdo: `range` controls how wide the pool spreads,
      * and a wide pool reads as a floodlight rather than an exhaust.
      */
-    lightIntensity: 12,
-    lightRange: 6.5,
+    lightIntensity: 7,
+    lightRange: 4.5,
     /**
      * Embers per second out of the pipes, and dust per second off the rear wheel.
      * These govern the ignition burst too, so zero really is zero — the flames and

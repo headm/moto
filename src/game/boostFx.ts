@@ -157,7 +157,7 @@ export class BoostFx {
       this.outerFlame.push(this.makeFlame(sign, 0.12, 1.0, '#ff7a18', 0.36));
     }
 
-    this.light = new THREE.PointLight(0xff7d22, 0, 6.5, 2);
+    this.light = new THREE.PointLight(0xff7d22, 0, 4.5, 2);
     this.light.position.set(0, EXHAUST_Y + 0.1, EXHAUST_Z - 0.5);
     this.rig.add(this.light);
   }
