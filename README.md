@@ -74,6 +74,21 @@ conversation.
 | 6 | side hip | 2.4 m | 30 m/s² | 0.25 m | 1.36 / 1.55 s |
 | 7 | the gauntlet | 5.6 m | **328 m/s²** | 0.40 m | 2.87 / **3.13 s, 25 m up** |
 | 8 | gator pond | — | — | — | the bit you'd rather clear |
+| 9 | the motte | 22 m tall | — | — | ride up it |
+| 10 | the drop | 3.4 m | — | 0.40 m | boosted: **3.02 s, 22.6 m clearance** |
+
+**#9/#10 is the castle.** A stone mound 22 m high and 144 m across with a keep on the summit, banners
+marking the fast line up, and a launch off the rim. Boosted, the launch clears the entire mound and
+lands on the desert 79 m out; unboosted you come up short and land badly on the flank — the same
+bargain the gator pond offers.
+
+Its surface is a **cone you traverse**, not a spiral ramp, and that is forced rather than chosen. A
+heightfield stores one height per point, so the surface cannot gain height around a closed loop: ride a
+terrace at constant radius through a full revolution and you return to the same point, which must be
+the same height. Built as a helicoid it became concentric terraces separated by risers the bike fell
+off — it orbited forever without ever summiting. Along a real spiral's centre-line the height depends
+only on radius, which *is* a cone. So the cone is the honest form, and the spiral is a line across it
+marked by banners rather than geometry.
 
 **#7 is the set piece**, and it continues the run: spawn, ride #1–#4, then straight into it. 3.12 s of
 air boosted, through a burning loop 20 m up on ten-metre legs, over a pond with alligators in it.

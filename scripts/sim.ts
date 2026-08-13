@@ -708,11 +708,13 @@ console.log(
     airborne.map((a) => `#${a.n}=${a.air.toFixed(2)}s`).join(' '),
   );
 
-  const doNothing = jumps.map((e) => ({ n: e.n, band: ride(e.f, 25, false).band }));
+  const doNothing = jumps
+    .filter((e) => !e.f.demandsBoost)
+    .map((e) => ({ n: e.n, band: ride(e.f, 25, false).band }));
   check(
     'no feature is unlandable with no input',
     doNothing.every((d) => d.band !== 'bad'),
-    doNothing.map((d) => `#${d.n}=${d.band}`).join(' '),
+    doNothing.map((d) => `#${d.n}=${d.band}`).join(' ') + '  (boost-only features excluded)',
   );
   console.log('');
 }
@@ -800,6 +802,84 @@ console.log(
     'water robs speed instead of ending the run',
     base.finite,
     'still finite and rideable after a swim',
+  );
+  console.log('');
+}
+
+// --- 10. the motte ---------------------------------------------------------
+{
+  const parkField = new Heightfield(T.world);
+  applyPark(parkField, PARK);
+
+  const motte = PARK.find((f) => f.name === 'the motte')!;
+  const drop = PARK.find((f) => f.name === 'the drop') as Kicker;
+  if (motte.kind !== 'motte') throw new Error('the motte changed kind');
+
+  const flankDeg =
+    (Math.atan2(motte.height, motte.outerRadius - motte.innerRadius) * 180) / Math.PI;
+  check(
+    'the motte can be ridden up',
+    (() => {
+      const s = createBikeState();
+      resetBike(s, parkField);
+      const r0 = motte.outerRadius + 6;
+      s.pos.set(motte.x + r0, 0, motte.z);
+      s.pos.y = parkField.height(s.pos.x, s.pos.z) + T.susp.restHeight;
+      s.yaw = -Math.PI / 2; // heading -X, straight at the centre
+      s.vel.set(-22, 0, 0);
+      const input = idle();
+      input.throttle = 1;
+      for (let i = 0; i < 120 * 40; i++) {
+        stepBike(s, parkField, input, STEP);
+        if (!finite(s)) return false;
+        if (Math.hypot(s.pos.x - motte.x, s.pos.z - motte.z) <= motte.innerRadius) return true;
+      }
+      return false;
+    })(),
+    `${flankDeg.toFixed(0)} deg flank, ${motte.height} m to the summit`,
+  );
+
+  // The payoff: boosted, the launch has to clear the whole mound and land on the
+  // desert. Landing back on the flank is what an under-powered version does.
+  const launched = (() => {
+    const s = createBikeState();
+    resetBike(s, parkField);
+    const fx = Math.sin(drop.yaw);
+    const fz = Math.cos(drop.yaw);
+    const u = -(drop.approach - 3);
+    s.pos.set(drop.x + fx * u, 0, drop.z + fz * u);
+    s.pos.y = parkField.height(s.pos.x, s.pos.z) + T.susp.restHeight;
+    s.yaw = drop.yaw;
+    s.vel.set(fx * 16, 0, fz * 16);
+    s.boostRemaining = T.boost.duration;
+    const input = idle();
+    input.throttle = 1;
+
+    let air = 0;
+    let peak = 0;
+    let seen = false;
+    for (let i = 0; i < 2400; i++) {
+      const wasGrounded = s.grounded;
+      stepBike(s, parkField, input, STEP);
+      if (!finite(s)) break;
+      const uu = (s.pos.x - drop.x) * fx + (s.pos.z - drop.z) * fz;
+      if (wasGrounded && !s.grounded && !seen && uu > 0) seen = true;
+      if (seen && !s.grounded) {
+        air = s.airTime;
+        peak = Math.max(peak, s.airPeak);
+      }
+      if (seen && !wasGrounded && s.grounded) {
+        return { air, peak, r: Math.hypot(s.pos.x - motte.x, s.pos.z - motte.z) };
+      }
+    }
+    return { air, peak, r: 0 };
+  })();
+
+  check(
+    'boosted, the summit launch clears the mound',
+    launched.r > motte.outerRadius,
+    `${launched.air.toFixed(2)} s air, ${launched.peak.toFixed(1)} m clearance, ` +
+      `landed ${launched.r.toFixed(0)} m out of a ${motte.outerRadius} m mound`,
   );
   console.log('');
 }

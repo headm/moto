@@ -25,6 +25,9 @@ import type { Feature } from './ramps';
  */
 
 const SOUTH = Math.PI;
+/** Yaw values for the cardinal directions: forward = (sin yaw, 0, cos yaw). */
+const PLUS_X = Math.PI / 2;
+const MINUS_X = -Math.PI / 2;
 
 /**
  * Shared datum for the main southbound line (#1-#4 and #7).
@@ -217,6 +220,64 @@ export const PARK: readonly Feature[] = [
     depth: 2.6,
     freeboard: 0.4,
   },
+
+  // ---- #9/#10: the motte ----------------------------------------------------
+  {
+    // A cone with a flat summit 22 m up, flank at 23 degrees. Traverse it and the
+    // grade under your wheels is gentle; charge straight up and the slope pull
+    // (about 5 m/s2) bleeds you down to a crawl. The banners mark the fast line.
+    kind: 'motte',
+    name: 'the motte',
+    x: -150,
+    z: -40,
+    yaw: PLUS_X,
+    baseY: -14,
+    halfWidth: 0,
+    approach: 0,
+    // The summit is large on purpose. To land on the desert rather than back on
+    // the hillside, the launch has to clear the entire flank — so a wide summit
+    // (run-up) and a narrow flank (less to clear) are both required. 68 m of
+    // summit against 38 m of flank works; 40 against 52 did not.
+    outerRadius: 72,
+    innerRadius: 34,
+    height: 22,
+    turns: 2,
+    // atan2 angle, not yaw: 0 puts the entry on the +X side, facing the park.
+    entryAngle: 0,
+    skirt: 14,
+  },
+  {
+    // On the summit, firing off the edge. Launching from 24 m up over ground that
+    // is 24 m lower does the work — the ramp only has to point you.
+    //
+    // `landing` is deliberately tiny: a normal landing pad would level 100 m of
+    // ground at summit height and turn the drop into a causeway, which is the
+    // whole point of being up here.
+    kind: 'kicker',
+    name: 'the drop',
+    // Set out so the crest sits on the summit *rim*, not at the centre. Launching
+    // from the middle left the whole summit still to cross before the flank even
+    // began, and every jump landed back on the hillside.
+    //
+    // Boosted it clears the mound completely (3.0 s air, 22.6 m of clearance,
+    // landing clean on the desert). Unboosted it comes up just short and you land
+    // badly on the flank — deliberate, and the same bargain the gator pond offers.
+    demandsBoost: true,
+    x: -176,
+    z: -40,
+    // Fires away from the park, out over 260 m of open desert, so you are not
+    // launching back over the ramp you just climbed.
+    yaw: MINUS_X,
+    baseY: 8,
+    halfWidth: 9,
+    approach: 26,
+    face: 'crest',
+    length: 8,
+    height: 3.4,
+    angleDeg: 0,
+    back: 5,
+    landing: 6,
+  },
 ];
 
 /**
@@ -237,4 +298,18 @@ export const SETPIECE = {
   // comfortably inside the ring — and then lands in the water.
   loop: { x: 0, y: 11.2, z: -150, yaw: SOUTH, radius: 7.5, tube: 0.55 },
   gatorCount: 6,
+  motte: {
+    x: -150,
+    z: -40,
+    baseY: -14,
+    summitY: 8,
+    outerRadius: 72,
+    innerRadius: 34,
+    height: 22,
+    turns: 2,
+    entryAngle: 0,
+    // Off to one side of the summit, so the launch run down the middle stays clear.
+    keep: { x: -150, z: -14, size: 13, height: 15 },
+    bannerCount: 7,
+  },
 };

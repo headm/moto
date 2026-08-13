@@ -370,7 +370,20 @@ Four things this turned up, all of which change the sketch below:
    sit below its lip, and a `lipDrop` parameter was built for it. It moved the measurement from 0.21 s
    to 0.23 s. Held against the real fix afterwards it made no difference at all (1.43 s vs 1.42 s), so
    it was removed. A plausible mechanism that produces almost no effect is evidence against itself.
-10. **Launch angle sets the do-nothing landing.** There's no auto-level, so the bike leaves a lip
+10. **A single-valued surface cannot gain height around a closed loop**, which rules out a spiral
+   ramp as *geometry*. Ride a terrace at constant radius through a full revolution and you arrive back
+   at the same (x, z) — necessarily the same height — so the climb has to be given back somewhere.
+   Built as a helicoid, the motte became concentric terraces separated by risers of `height / turns`
+   that the bike simply fell off; it orbited indefinitely and never summited. Along a real spiral's
+   centre-line the height depends only on radius, and that is a cone. So a rideable mound is a cone
+   traversed diagonally, and the spiral is a *line* across it — marked with props, chosen because
+   traversing keeps speed, not enforced by walls.
+
+   The corollary for any launch off such a mound: it has to clear the entire flank or it lands back on
+   the hillside. That wants a wide summit (run-up) and a narrow flank (less to clear), and the crest
+   placed at the *rim* — a launch from the summit centre still has the whole summit to cross before the
+   flank even begins.
+11. **Launch angle sets the do-nothing landing.** There's no auto-level, so the bike leaves a lip
    holding the lip's pitch; on flat ground the resulting error *is* the launch angle. Angles at or
    under ~24 deg therefore land clean with no input, which correctly reserves the sketchy and bad
    bands for failed rotations rather than for ordinary jumping.

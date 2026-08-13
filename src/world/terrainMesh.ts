@@ -15,6 +15,9 @@ const ROCK = new THREE.Color('#6b6560');
 const SCRUB = new THREE.Color('#6f7a44');
 /** Worked dirt on ramp faces, decks and approaches — reads as built, not natural. */
 const GROOMED = new THREE.Color('#a06a42');
+/** Masonry, for structures rather than earthworks. */
+const STONE = new THREE.Color('#8d8779');
+const STONE_DARK = new THREE.Color('#5f5b52');
 
 const cA = new THREE.Vector3();
 const cB = new THREE.Vector3();
@@ -34,11 +37,15 @@ function shadeTriangle(
   scrub: number,
   jitter: number,
   groomed: boolean,
+  stone: boolean,
   out: THREE.Color,
 ) {
   const slope = 1 - normalY;
 
-  if (groomed) {
+  if (stone) {
+    // Walls darken sharply, so courses and the spiral's risers read as masonry.
+    out.copy(STONE).lerp(STONE_DARK, Math.min(1, slope / 0.55));
+  } else if (groomed) {
     // Ramps are shaped dirt: no scrub, and they darken as they steepen so a lip
     // reads against its own approach.
     out.copy(GROOMED).lerp(PACKED, Math.min(1, slope / 0.5) * 0.55);
@@ -94,6 +101,7 @@ export function buildTerrainMesh(hf: Heightfield, stride: number): Terrain {
     z2: number,
     jitter: number,
     groomed: boolean,
+    stone: boolean,
   ) => {
     cA.set(x1 - x0, y1 - y0, z1 - z0);
     cB.set(x2 - x0, y2 - y0, z2 - z0);
@@ -106,7 +114,7 @@ export function buildTerrainMesh(hf: Heightfield, stride: number): Terrain {
     const fine = sampleNoise(cx / 46, cz / 46, hf.seed + 12);
     const scrub = smoothstep(0.5, 0.85, broad * 0.65 + fine * 0.35);
 
-    shadeTriangle(Math.abs(nrm.y), scrub, jitter, groomed, col);
+    shadeTriangle(Math.abs(nrm.y), scrub, jitter, groomed, stone, col);
 
     positions[p] = x0; positions[p + 1] = y0; positions[p + 2] = z0;
     positions[p + 3] = x1; positions[p + 4] = y1; positions[p + 5] = z1;
@@ -137,14 +145,15 @@ export function buildTerrainMesh(hf: Heightfield, stride: number): Terrain {
       const jitter = triJitter(gi, gj);
       // A quad counts as groomed if any of its corners were stamped, so a feature
       // edge doesn't shred into a checkerboard at this mesh stride.
-      const groomed =
-        mark[gj * res + gi] === 1 ||
-        mark[gj * res + gi + stride] === 1 ||
-        mark[(gj + stride) * res + gi] === 1 ||
-        mark[(gj + stride) * res + gi + stride] === 1;
+      const m0 = mark[gj * res + gi];
+      const m1 = mark[gj * res + gi + stride];
+      const m2 = mark[(gj + stride) * res + gi];
+      const m3 = mark[(gj + stride) * res + gi + stride];
+      const stone = m0 === 2 || m1 === 2 || m2 === 2 || m3 === 2;
+      const groomed = !stone && (m0 === 1 || m1 === 1 || m2 === 1 || m3 === 1);
       // Winding (a, c, b) and (b, c, d) both give upward normals.
-      emit(x0, ya, z0, x0, yc, z1, x1, yb, z0, jitter, groomed);
-      emit(x1, yb, z0, x0, yc, z1, x1, yd, z1, -jitter, groomed);
+      emit(x0, ya, z0, x0, yc, z1, x1, yb, z0, jitter, groomed, stone);
+      emit(x1, yb, z0, x0, yc, z1, x1, yd, z1, -jitter, groomed, stone);
     }
   }
 

@@ -25,9 +25,24 @@ export interface LoopSpec {
   tube: number;
 }
 
+export interface MotteSpec {
+  x: number;
+  z: number;
+  baseY: number;
+  summitY: number;
+  outerRadius: number;
+  innerRadius: number;
+  height: number;
+  turns: number;
+  entryAngle: number;
+  keep: { x: number; z: number; size: number; height: number };
+  bannerCount: number;
+}
+
 export interface SetPieceSpec {
   loop: LoopSpec;
   gatorCount: number;
+  motte: MotteSpec;
 }
 
 interface Gator {
@@ -226,6 +241,100 @@ export function createProps(hf: Heightfield, spec: SetPieceSpec): Props {
     }
   }
 
+  // ---- the motte's keep and banners ---------------------------------------
+  // Decoration, like the loop: the heightfield carries the rideable surface, and
+  // these carry the read. A stone keep and a line of banners are what make a
+  // stepped mound legible as a castle rather than as a quarry.
+  const banners: THREE.Mesh[] = [];
+  {
+    const mo = spec.motte;
+    const stone = mat(new THREE.MeshLambertMaterial({ color: 0x9a9384, flatShading: true }));
+    const stoneDark = mat(new THREE.MeshLambertMaterial({ color: 0x6b665c, flatShading: true }));
+    const roof = mat(new THREE.MeshLambertMaterial({ color: 0x5b4a5e, flatShading: true }));
+    const cloth = mat(new THREE.MeshLambertMaterial({ color: 0xb2402f, flatShading: true }));
+    const pole = mat(new THREE.MeshLambertMaterial({ color: 0x6d5a42, flatShading: true }));
+
+    const k = mo.keep;
+    const keepGroup = new THREE.Group();
+    keepGroup.position.set(k.x, mo.summitY, k.z);
+    group.add(keepGroup);
+
+    const body = new THREE.Mesh(track(new THREE.BoxGeometry(k.size, k.height, k.size)), stone);
+    body.position.y = k.height / 2;
+    body.castShadow = true;
+    body.receiveShadow = true;
+    keepGroup.add(body);
+
+    // Crenellations: merlons round the parapet, with the gaps between them doing
+    // as much work as the blocks.
+    const merlonGeo = track(new THREE.BoxGeometry(1.5, 1.6, 1.2));
+    const perSide = 4;
+    for (let side = 0; side < 4; side++) {
+      for (let n = 0; n < perSide; n++) {
+        const f = (n + 0.5) / perSide - 0.5;
+        const along = f * (k.size - 1.5);
+        const out = k.size / 2 - 0.6;
+        const m = new THREE.Mesh(merlonGeo, stone);
+        if (side === 0) m.position.set(along, k.height + 0.8, out);
+        else if (side === 1) m.position.set(along, k.height + 0.8, -out);
+        else if (side === 2) m.position.set(out, k.height + 0.8, along);
+        else m.position.set(-out, k.height + 0.8, along);
+        if (side >= 2) m.rotation.y = Math.PI / 2;
+        m.castShadow = true;
+        keepGroup.add(m);
+      }
+    }
+
+    // Corner turrets, each capped with a spire.
+    const turretGeo = track(new THREE.CylinderGeometry(2.1, 2.4, k.height + 4, 7));
+    const spireGeo = track(new THREE.ConeGeometry(2.6, 4.4, 7));
+    for (const sx of [-1, 1]) {
+      for (const sz of [-1, 1]) {
+        const cx = (sx * k.size) / 2;
+        const cz = (sz * k.size) / 2;
+        const t = new THREE.Mesh(turretGeo, stoneDark);
+        t.position.set(cx, (k.height + 4) / 2, cz);
+        t.castShadow = true;
+        keepGroup.add(t);
+        const sp = new THREE.Mesh(spireGeo, roof);
+        sp.position.set(cx, k.height + 4 + 2.2, cz);
+        sp.castShadow = true;
+        keepGroup.add(sp);
+      }
+    }
+
+    // A dark doorway, so the keep reads as a building and not a block.
+    const door = new THREE.Mesh(track(new THREE.BoxGeometry(2.6, 4, 0.5)), stoneDark);
+    door.position.set(0, 2, k.size / 2 + 0.1);
+    keepGroup.add(door);
+
+    // Banners along the outer shoulder of the spiral, marking the route up.
+    const TAU2 = Math.PI * 2;
+    const poleGeo = track(new THREE.CylinderGeometry(0.14, 0.16, 7, 5));
+    poleGeo.translate(0, 3.5, 0);
+    const flagGeo = track(new THREE.BoxGeometry(0.12, 2.1, 3.2));
+    const total = mo.turns * TAU2;
+    const treadWidth = (mo.outerRadius - mo.innerRadius) / mo.turns;
+    for (let n = 0; n < mo.bannerCount; n++) {
+      const th = ((n + 0.5) / mo.bannerCount) * total;
+      const rs = mo.outerRadius - (mo.outerRadius - mo.innerRadius) * (th / total);
+      const r = rs + treadWidth * 0.42; // outer shoulder, clear of the ride line
+      const a = mo.entryAngle + th;
+      const x = mo.x + Math.cos(a) * r;
+      const z = mo.z + Math.sin(a) * r;
+      const y = hf.height(x, z);
+      const pl = new THREE.Mesh(poleGeo, pole);
+      pl.position.set(x, y, z);
+      pl.castShadow = true;
+      group.add(pl);
+      const fl = new THREE.Mesh(flagGeo, cloth);
+      fl.position.set(x, y + 5.6, z + 1.7);
+      fl.rotation.y = a;
+      banners.push(fl);
+      group.add(fl);
+    }
+  }
+
   let clock = 0;
 
   return {
@@ -244,6 +353,12 @@ export function createProps(hf: Heightfield, spec: SetPieceSpec): Props {
       // Surface breathes a few centimetres so the water isn't a dead flat slab.
       for (const w of waterPlanes) {
         w.mesh.position.y = w.level + Math.sin(clock * 0.85) * 0.05;
+      }
+
+      // Banners stir, which is most of what makes them read as cloth.
+      for (let n = 0; n < banners.length; n++) {
+        banners[n].rotation.z = Math.sin(clock * 1.9 + n * 0.7) * 0.09;
+        banners[n].scale.z = 1 + Math.sin(clock * 2.6 + n) * 0.07;
       }
 
       for (const g of gators) {

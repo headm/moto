@@ -47,6 +47,12 @@ export interface FeatureBase {
    * whole sequence continuous.
    */
   baseY?: number;
+  /**
+   * Set when a feature is *meant* to be unlandable without boost. Keeps the
+   * "every feature is survivable with no input" check strict for everything else
+   * rather than weakening it globally to accommodate one deliberate exception.
+   */
+  demandsBoost?: boolean;
 }
 
 export interface Kicker extends FeatureBase {
@@ -122,7 +128,49 @@ export interface Rollers extends FeatureBase {
   height: number;
 }
 
-export type Feature = Kicker | Tabletop | Rollers | Pond;
+/**
+ * A motte: a conical mound with a flat summit, ridden by traversing up its flank.
+ *
+ * The surface is a **cone**, not a spiral ramp, and that is forced rather than
+ * chosen. A heightfield stores one height per point, so the surface cannot gain
+ * height around a closed loop: ride a terrace at constant radius through a full
+ * revolution and you arrive back at the same (x, z), which must be the same
+ * height. The climb has to be given back somewhere.
+ *
+ * Building it as a helicoid made that concrete and unrideable — concentric
+ * terraces separated by risers of `height / turns` that the bike simply fell off,
+ * orbiting forever without ever summiting. Along a real spiral's centre-line the
+ * height depends only on *radius*, which is a cone. So the cone is the honest
+ * form, and the spiral is a *line across it* rather than built geometry — marked
+ * by the banners, and taken because traversing keeps your speed where charging
+ * straight up does not.
+ *
+ * `turns` and `entryAngle` therefore describe the suggested route for the props,
+ * not the surface. Flank slope is `height / (outer - inner)`; keep it under about
+ * 25 degrees or a direct assault stops being possible at all.
+ */
+export interface Motte extends FeatureBase {
+  kind: 'motte';
+  /** Where the ramp meets the ground, at the entry. */
+  outerRadius: number;
+  /** Flat summit platform radius. */
+  innerRadius: number;
+  /** Summit height above the base. */
+  height: number;
+  /** Turns of the suggested spiral line, for banner placement. */
+  turns: number;
+  /**
+   * Where the entry sits around the mound, as an **atan2(dz, dx) angle** — 0 is
+   * the +X side, PI/2 the +Z side. Deliberately *not* the yaw convention used
+   * elsewhere: yaw measures from +Z toward +X, atan2 from +X toward +Z, and the
+   * two differ by PI/2. Mixing them silently rotates the whole structure.
+   */
+  entryAngle: number;
+  /** Outer wall taper. Short reads as masonry; long reads as a hill. */
+  skirt: number;
+}
+
+export type Feature = Kicker | Tabletop | Rollers | Pond | Motte;
 
 /**
  * Lip height that produces the requested launch angle. For h = H·tⁿ the lip slope
@@ -164,6 +212,16 @@ function smoothstep01(t: number): number {
   return t * t * (3 - 2 * t);
 }
 
+/** Surface height of a motte above its base. Radial only — see the type comment. */
+function motteHeight(f: Motte, r: number): number {
+  if (r <= f.innerRadius) return f.height;
+  if (r >= f.outerRadius) return 0;
+  const t = (f.outerRadius - r) / (f.outerRadius - f.innerRadius);
+  // Linear, so the flank has one constant slope to judge and traverse. An eased
+  // profile would make the middle half again as steep as the average.
+  return f.height * t;
+}
+
 /** Total distance a feature occupies past its origin. */
 function featureLength(f: Feature): number {
   switch (f.kind) {
@@ -175,6 +233,8 @@ function featureLength(f: Feature): number {
       return f.count * f.spacing;
     case 'pond':
       return f.length;
+    case 'motte':
+      return f.outerRadius + f.skirt;
   }
 }
 
@@ -223,6 +283,10 @@ function profile(f: Feature, u: number, v: number): number {
       if (u >= span) return 0;
       return f.height * 0.5 * (1 - Math.cos((2 * Math.PI * u) / f.spacing));
     }
+
+    case 'motte':
+      // Radial, so it never uses the corridor path; applyMotte handles it.
+      return 0;
 
     case 'pond': {
       if (u >= f.length) return 0;
@@ -277,6 +341,8 @@ function tailFade(f: Feature): number {
       return END_FADE;
     case 'pond':
       return f.length * 0.2;
+    case 'motte':
+      return END_FADE;
   }
 }
 
@@ -284,7 +350,51 @@ function tailFade(f: Feature): number {
  * Stamp one feature. Reads the untouched terrain height at the origin first, so
  * the whole feature — approach, face, landing — sits on one level plane.
  */
+/** Stamp a motte. Radial rather than corridor-shaped, so it has its own path. */
+function applyMotte(hf: Heightfield, f: Motte) {
+  const base = f.baseY ?? hf.height(f.x, f.z);
+  const outer = f.outerRadius + f.skirt;
+  const { res, cell, half, data, mark } = hf;
+
+  const i0 = Math.max(0, Math.floor((f.x - outer + half) / cell));
+  const i1 = Math.min(res - 1, Math.ceil((f.x + outer + half) / cell));
+  const j0 = Math.max(0, Math.floor((f.z - outer + half) / cell));
+  const j1 = Math.min(res - 1, Math.ceil((f.z + outer + half) / cell));
+
+  for (let j = j0; j <= j1; j++) {
+    const wz = -half + j * cell;
+    for (let i = i0; i <= i1; i++) {
+      const wx = -half + i * cell;
+      const dx = wx - f.x;
+      const dz = wz - f.z;
+      const r = Math.hypot(dx, dz);
+      if (r > outer) continue;
+
+      let h = motteHeight(f, r);
+      let w = 1;
+      if (r > f.outerRadius) {
+        // Skirt: the cone already reaches zero at outerRadius, so this only fades
+        // the stamp out into whatever the surrounding ground is doing.
+        const t = (r - f.outerRadius) / f.skirt;
+        w = 1 - smoothstep01(t);
+        h = 0;
+      }
+
+      const k = j * res + i;
+      const target = base + h;
+      data[k] += (target - data[k]) * w;
+      // 2 = masonry, shaded as stone rather than as worked dirt.
+      if (w > 0.45) mark[k] = 2;
+    }
+  }
+}
+
 export function applyFeature(hf: Heightfield, f: Feature) {
+  if (f.kind === 'motte') {
+    applyMotte(hf, f);
+    return;
+  }
+
   const base = f.baseY ?? hf.height(f.x, f.z);
 
   if (f.kind === 'pond') {
@@ -371,7 +481,10 @@ export function applyFeature(hf: Heightfield, f: Feature) {
       // tail of the one before it. That had erased most of a tabletop's face —
       // 2.31 m of lip reduced to 0.45 m — and part of the whoops, which reads as
       // dead space where a jump used to be.
-      if (u < 0 && mark[k] === 1 && data[k] > target) continue;
+      // Any shaped surface, not just worked dirt: the motte marks itself as
+      // masonry, and checking only for dirt let a summit ramp's approach cut a
+      // channel straight through the spiral below it.
+      if (u < 0 && mark[k] !== 0 && data[k] > target) continue;
 
       data[k] += (target - data[k]) * w;
       // Marked cells are shaded as groomed dirt, which is what makes a feature
