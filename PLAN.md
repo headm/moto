@@ -425,6 +425,31 @@ Four things this turned up, all of which change the sketch below:
    holding the lip's pitch; on flat ground the resulting error *is* the launch angle. Angles at or
    under ~24 deg therefore land clean with no input, which correctly reserves the sketchy and bad
    bands for failed rotations rather than for ordinary jumping.
+16. **A near-vertical face is a trampoline, and the launch is not on the vertical part.**
+   The suspension pushes along world +Y rather than along the surface normal — correct
+   and cheap on terrain, catastrophic on a wall, where both spring terms saturate
+   `maxAccel` for many steps in a row and horizontal speed is turned into vertical
+   launch. Charged broadside at its steepest risers, the ziggurat threw the bike 41 m up
+   at 47 m/s: twice its own summit, and well past the 3.13 s the best jump in the park
+   gives. Three findings, in the order they arrived:
+   - Fading the vertical push out on steep ground is the fix, but the *band matters more
+     than the idea*. A 60-78 deg band left most of it: the launch happens on the
+     50-65 deg ramp **leading up to** a wall, never on the vertical part, because by the
+     time ground is vertical the bike is already leaving.
+   - A 45 deg lower edge then killed the exploit and quietly detuned the best feature in
+     the park. #7's crest is steepest in the *middle* at about 46 deg, so it sat inside
+     the fade — costing it 0.4 s of air and throwing the fire ring 17.7 m off a flight
+     path it is supposed to pass through the centre of. The band has to clear the
+     steepest point of every **face**, which for a crest is not its lip. 55-75 does.
+   - The hard floor clamp is a second, independent launcher, and no amount of fixing the
+     spring touches it: it moves the bike *positionally*. Rate limiting it is necessary
+     but not sufficient — on its own it converts the launch into a slow escalator up the
+     same wall. It has to resolve along the surface normal instead of along +Y, which on
+     a near-vertical face means pushing the bike *out* and letting it fall.
+
+   Measured after: every feature's air time identical to the centisecond, the legitimate
+   stepped climbs up the ziggurat unchanged, and only the wall case different. The
+   harness asserts the wrong-side charge stays near the summit rather than doubling it.
 
 Original sketch, still to do: Heightfield to 1 m cells (`res: 1025`, `meshStride` 4 to hold the
 triangle count) so a lip is actually resolved. Mask-blend stamps — *not* additive, or a ramp on a

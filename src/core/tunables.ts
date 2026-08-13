@@ -90,6 +90,52 @@ export const DEFAULTS = {
      * trick detection and the combo counter — into noise.
      */
     stickDistance: 0.09,
+
+    /**
+     * Where ground stops being terrain and starts being a wall.
+     *
+     * The suspension pushes along world **+Y**, not along the surface normal.
+     * On anything rideable that is right and cheap. On a near-vertical face it is
+     * a trampoline: the axle probes read metres above the chassis, both spring
+     * terms saturate `maxAccel` for many steps in a row, and horizontal speed is
+     * converted into vertical launch. Charged broadside at its steepest risers,
+     * the ziggurat threw the bike 41 m up at 47 m/s — twice its own summit,
+     * against a 34 m/s top speed and a 3.1 s best from any designed feature.
+     *
+     * So the vertical push fades out between these two slopes. Full force at or
+     * under `climbSlopeDeg`, nothing at or over `wallSlopeDeg`.
+     *
+     * Both ends were found by measurement, and both were wrong first.
+     *
+     * 60-78 was tried first and left most of the exploit intact: the launch does
+     * not come off the vertical part of a wall at all, it comes off whatever
+     * 50-65 deg ramp leads up to it, because by the time ground is vertical the
+     * bike is already leaving.
+     *
+     * 45-70 killed the exploit and quietly detuned the best feature in the park.
+     * #7's crest is steepest in the *middle* at about 46 deg, so it sat inside
+     * the fade — costing it 0.4 s of air and throwing the fire ring 17.7 m off a
+     * flight path it is supposed to pass through the centre of. 55 clears it with
+     * room, and every feature's air time is then identical to the centisecond,
+     * which is the check that matters.
+     *
+     * The lesson for anything added later: this band has to sit above the
+     * steepest point of every *face*, which for a crest is not its lip.
+     */
+    climbSlopeDeg: 55,
+    wallSlopeDeg: 75,
+    /**
+     * Metres per second the hard floor clamp may lift the chassis.
+     *
+     * The clamp exists to bound penetration when a hard landing outruns the
+     * spring, and it moves the bike *positionally*, which no amount of fixing the
+     * spring will stop. Against a steep riser the floor rises faster than any
+     * landing ever does, and an unbounded clamp simply walked the chassis up it —
+     * a free ascent that ended in a release off the top. Generous enough for any
+     * real landing (30 m/s of descent needs 0.25 m per step, this allows 0.33),
+     * far below the 200+ m/s a wall demands.
+     */
+    maxClimbRate: 40,
   },
 
   boost: {

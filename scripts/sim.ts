@@ -976,6 +976,56 @@ console.log(
     tiersCleared >= zig.tiers - 1,
     `${tiersCleared} of ${zig.tiers - 1} steps cleared, reached y=${reached.toFixed(1)} (summit ${summitY})`,
   );
+
+  // --- and cannot be climbed up the wrong side ------------------------------
+  // The suspension pushes along world +Y rather than along the surface normal,
+  // which on a near-vertical face converts horizontal speed into launch: both
+  // spring terms saturate `maxAccel` for many steps in a row. Charged broadside
+  // at its steepest risers the ziggurat threw the bike 41 m up at 47 m/s —
+  // twice its own summit, and far past anything the park's best jump gives.
+  //
+  // `susp.climbSlopeDeg` fades that push out on ground too steep to be intentional
+  // geometry, and the floor clamp resolves along the surface normal instead of
+  // straight up. The legitimate stepped climbs are untouched to the centisecond;
+  // only the wall case changes.
+  {
+    const charge = (zOff: number, boost: boolean) => {
+      const s = createBikeState();
+      resetBike(s, parkField);
+      s.pos.set(zig.x + zig.halfWidth + 45, 0, zig.z - zOff);
+      s.pos.y = parkField.height(s.pos.x, s.pos.z) + T.susp.restHeight;
+      s.yaw = -Math.PI / 2;
+      s.vel.set(-25, 0, 0);
+      if (boost) s.boostRemaining = T.boost.duration;
+      const input = idle();
+      input.throttle = 1;
+      let peakVy = 0;
+      let peakY = -Infinity;
+      for (let i = 0; i < 120 * 12; i++) {
+        stepBike(s, parkField, input, STEP);
+        if (!finite(s)) break;
+        peakVy = Math.max(peakVy, s.vel.y);
+        peakY = Math.max(peakY, s.pos.y);
+      }
+      return { peakVy, peakY };
+    };
+
+    let worstVy = 0;
+    let worstY = -Infinity;
+    for (const zOff of [40, 90, 130]) {
+      for (const boost of [false, true]) {
+        const r = charge(zOff, boost);
+        worstVy = Math.max(worstVy, r.peakVy);
+        worstY = Math.max(worstY, r.peakY);
+      }
+    }
+    check(
+      'and cannot be climbed up the wrong side',
+      worstY - summitY < 10 && worstVy < 38,
+      `broadside charge tops out at y=${worstY.toFixed(0)} against a ${summitY} m summit, ` +
+        `${worstVy.toFixed(0)} m/s climb`,
+    );
+  }
   console.log('');
 }
 

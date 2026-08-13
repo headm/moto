@@ -55,6 +55,28 @@ function approachAngle(cur: number, target: number, k: number, dt: number): numb
 }
 
 /**
+ * How much of the suspension's vertical push this ground is entitled to: 1 on
+ * anything rideable, 0 on a wall, smooth between.
+ *
+ * The spring pushes along world +Y rather than along the surface normal, which is
+ * correct and cheap on terrain and catastrophic on a near-vertical face — there,
+ * the whole force goes into launching the bike instead of shoving it back off the
+ * wall. Fading the push out over a band that sits above every slope in the park
+ * fixes that without any tuned feature being able to notice.
+ *
+ * `normalY` is the cosine of the slope angle, so it *decreases* as ground steepens.
+ */
+function wallFactor(normalY: number): number {
+  const su = T.susp;
+  const wallY = Math.cos(THREE.MathUtils.degToRad(su.wallSlopeDeg));
+  const climbY = Math.cos(THREE.MathUtils.degToRad(su.climbSlopeDeg));
+  if (normalY >= climbY) return 1;
+  if (normalY <= wallY) return 0;
+  const t = (normalY - wallY) / Math.max(1e-6, climbY - wallY);
+  return t * t * (3 - 2 * t);
+}
+
+/**
  * Rate a touchdown and apply its consequence.
  *
  * The errors are *wrapped* differences, so landing inverted reads as ~180 deg
@@ -174,7 +196,12 @@ export function stepBike(s: BikeState, hf: Heightfield, input: InputState, dt: n
       // toward the ground. Allowing negative force lets the damper suck the bike
       // over crests — it tracks the terrain beautifully and never gets air.
       // Damping still bleeds rebound energy by reducing the upward force.
-      const accel = Math.min(su.maxAccel, Math.max(0, su.springK * pen + su.springC * penRate));
+      // Faded out on a wall. Both terms saturate `maxAccel` against a vertical
+      // face, and sustained for a tenth of a second that is tens of m/s of free
+      // launch — see `susp.wallSlopeDeg`.
+      const accel =
+        Math.min(su.maxAccel, Math.max(0, su.springK * pen + su.springC * penRate)) *
+        wallFactor(nrm.y);
       s.vel.y += accel * dt;
       s.susp = Math.min(pen, su.maxTravel);
     } else {
@@ -314,13 +341,57 @@ export function stepBike(s: BikeState, hf: Heightfield, input: InputState, dt: n
   const hR2 = hf.height(s.pos.x - fwd.x * halfWB, s.pos.z - fwd.z * halfWB);
   const floor = (hF2 + hR2) * 0.5 + su.restHeight - su.maxTravel;
   if (s.pos.y < floor) {
-    s.pos.y = floor;
-    if (s.vel.y < 0) {
-      s.lastImpact = Math.max(s.lastImpact, -s.vel.y);
-      s.vel.y = 0;
+    // The clamp resolves penetration along the **surface normal**, not along +Y.
+    // That is the same correction `wallFactor` makes to the spring, and for the
+    // same reason: pushing a bike straight up out of a vertical face is what
+    // turns a wall into a lift. Rate-limited as well, because this moves the bike
+    // positionally — against a steep riser the floor rises at over 200 m/s.
+    hf.normal(s.pos.x, s.pos.z, nrm);
+    const wf = wallFactor(nrm.y);
+    const need = floor - s.pos.y;
+    const budget = su.maxClimbRate * dt;
+    const up = Math.min(need, budget) * wf;
+    s.pos.y += up;
+
+    if (up >= need - 1e-6) {
+      // Rideable ground: an ordinary hard landing that outran the spring.
+      if (s.vel.y < 0) {
+        s.lastImpact = Math.max(s.lastImpact, -s.vel.y);
+        s.vel.y = 0;
+      }
+      s.susp = su.maxTravel;
+      s.grounded = true;
+    } else {
+      // A wall. Resolve what is left by moving *out* along the surface instead of
+      // up it — on a near-vertical face a few centimetres outward clears metres
+      // of penetration, which is why this is stable where lifting is not.
+      //
+      // The bike is deliberately left airborne and falling. Hitting a wall has to
+      // drop you off it; extruding you up through the edge onto whatever is on
+      // top is what a purely vertical clamp did, and it read as riding straight
+      // through the lip of the thing you just failed to clear.
+      const nh = Math.hypot(nrm.x, nrm.z);
+      if (nh > 1e-4) {
+        // The normal's horizontal part points downhill, so this is "outward", and
+        // moving into the slope is a negative projection onto it.
+        const nx = nrm.x / nh;
+        const nz = nrm.z / nh;
+        // Metres of ground height shed per metre travelled outward.
+        const grade = nh / Math.max(0.05, nrm.y);
+        const out = Math.min((need - up) / Math.max(0.25, grade), budget);
+        s.pos.x += nx * out;
+        s.pos.z += nz * out;
+
+        const into = s.vel.x * nx + s.vel.z * nz;
+        if (into < 0) {
+          s.vel.x -= into * nx;
+          s.vel.z -= into * nz;
+          // Rides the existing impact channel, so hitting a wall shakes the
+          // camera like any other collision instead of happening in silence.
+          s.lastImpact = Math.max(s.lastImpact, -into);
+        }
+      }
     }
-    s.susp = su.maxTravel;
-    s.grounded = true;
   }
 
   const limit = hf.half - 24;
