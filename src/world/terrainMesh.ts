@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { sampleNoise, type Heightfield } from './heightfield';
+import { activeTheme } from './themes';
 
 /**
  * Heightfield -> one flat-shaded, vertex-coloured, non-indexed mesh.
@@ -7,17 +8,37 @@ import { sampleNoise, type Heightfield } from './heightfield';
  * Non-indexed so each triangle can carry a single flat colour: all three of its
  * vertices get the same value, which kills gradient banding and makes ramp lips
  * and landing slopes read unambiguously at speed. One draw call for the world.
+ *
+ * Colour is baked into the vertices, so a theme change means rebuilding this
+ * mesh. That is the whole reason switching theme is not purely a uniform update.
  */
 
-const DIRT = new THREE.Color('#b58a55');
-const PACKED = new THREE.Color('#8a6b45');
-const ROCK = new THREE.Color('#6b6560');
-const SCRUB = new THREE.Color('#6f7a44');
+const DIRT = new THREE.Color();
+const PACKED = new THREE.Color();
+const ROCK = new THREE.Color();
+/**
+ * Driven by its own patchy noise field rather than by slope, so it reads as
+ * something scattered across the terrain: vegetation, debris, mineral staining —
+ * whichever the theme calls for.
+ */
+const SCRUB = new THREE.Color();
 /** Worked dirt on ramp faces, decks and approaches — reads as built, not natural. */
-const GROOMED = new THREE.Color('#a06a42');
+const GROOMED = new THREE.Color();
 /** Masonry, for structures rather than earthworks. */
-const STONE = new THREE.Color('#8d8779');
-const STONE_DARK = new THREE.Color('#5f5b52');
+const STONE = new THREE.Color();
+const STONE_DARK = new THREE.Color();
+
+/** Pull the seven bands off the active theme. Once per mesh build, not per triangle. */
+function loadThemeColors() {
+  const c = activeTheme().terrain;
+  DIRT.set(c.dirt);
+  PACKED.set(c.packed);
+  ROCK.set(c.rock);
+  SCRUB.set(c.scrub);
+  GROOMED.set(c.groomed);
+  STONE.set(c.stone);
+  STONE_DARK.set(c.stoneDark);
+}
 
 const cA = new THREE.Vector3();
 const cB = new THREE.Vector3();
@@ -79,6 +100,7 @@ export interface Terrain {
 }
 
 export function buildTerrainMesh(hf: Heightfield, stride: number): Terrain {
+  loadThemeColors();
   const { res, cell, half, data, mark } = hf;
   const quads = Math.floor((res - 1) / stride);
   const quadSize = cell * stride;

@@ -117,6 +117,40 @@ park and travelling shouldn't cost points, but it does drop the combo — nothin
 Both trick detection and scoring are stepped at **physics rate, not render rate**. Two landings can
 fall inside one rendered frame, and the second must not erase the first's effect on the combo.
 
+## Visual themes
+
+`H` → **Visual theme** switches the world's palette and lighting between four
+looks. It's a live switch: the heightfield, the park and the props are all
+theme-independent, so nothing regenerates and nothing respawns — you can flip
+themes mid-flight and judge them on the same jump.
+
+| Theme | What it is | The value that carries it |
+|---|---|---|
+| Desert | the world as built — the reference | — |
+| Mars | butterscotch sky, oxide terrain | `hemiSky` orange, so shadows fill warm |
+| Lunar | black sky, grey regolith | `hemiIntensity` 0.12 — near-black shadows |
+| Volcanic | pale ash on flats, black basalt on steeps | the flats' luminance |
+
+A theme sets seven terrain bands, three sky gradient stops, both light colours,
+and the `Light`/`Render` dials — so switching moves those sliders, and tuning a
+theme means moving them and copying the values back into `src/world/themes.ts`.
+
+Two constraints shape every palette, and both come from how the world is drawn
+rather than from taste. **Colour has to encode slope**, because `shadeTriangle`
+picks its band from `normalY` and a lip has to read against its own approach — a
+monochrome world would screenshot well and be unrideable. And **fog hides the
+world edge**, tinted to the horizon stop so terrain dissolves instead of stopping
+at a line 1024 m out; the lunar theme keeps that trick by fading to near-black
+against a near-black sky rather than by removing the fog.
+
+The `scrub` band is the most theme-dependent of the seven, because it is driven
+by its own patchy noise rather than by slope — so it reads as something scattered
+across the terrain. Vegetation in the desert, coarse debris on Mars, mare basalt
+on the Moon, sulfur staining on the volcano.
+
+Set-piece props — water, the burning loop, the alligators, the gatehouses — are
+*not* themed, so they keep their own colours whichever theme is up.
+
 ## The park
 
 Features are numbered in this table and in `npm run sim`, so a feature can be named the same way in the

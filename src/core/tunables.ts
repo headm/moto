@@ -8,6 +8,13 @@
  */
 
 export const DEFAULTS = {
+  /**
+   * Visual theme — palette, lighting and fog. See `world/themes.ts`. Switching
+   * rebuilds the terrain mesh, because slope colours are baked per-vertex at
+   * build time, but leaves the heightfield and the park untouched.
+   */
+  theme: 'desert',
+
   world: {
     seed: 1337,
     /** World is a square this many metres on a side, centred on the origin. */

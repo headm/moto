@@ -4,7 +4,8 @@ import { createLoop } from './core/loop';
 import { Input } from './core/input';
 import { Heightfield } from './world/heightfield';
 import { buildTerrainMesh, type Terrain } from './world/terrainMesh';
-import { createSky, updateSky, applyLighting } from './world/sky';
+import { createSky, updateSky, applyLighting, applySkyTheme } from './world/sky';
+import { applyThemeTunables } from './world/themes';
 import { applyPark } from './world/ramps';
 import { PARK, SETPIECE } from './world/park';
 import { createProps, type Props } from './world/props';
@@ -86,19 +87,41 @@ function applyRender() {
   applyLighting(sky);
 }
 
-function regenerateWorld() {
+function rebuildTerrainMesh() {
   scene.remove(terrain.mesh);
   terrain.dispose();
-  hf = buildWorld();
   terrain = buildTerrainMesh(hf, T.world.meshStride);
   scene.add(terrain.mesh);
+}
+
+function regenerateWorld() {
+  hf = buildWorld();
+  rebuildTerrainMesh();
 
   scene.remove(props.group);
   props.dispose();
   props = createProps(hf, SETPIECE);
   scene.add(props.group);
+  // Repaint but do not re-derive the light values: a preset load arrives here
+  // with its own lighting already in T, and calling applyTheme would stamp the
+  // theme's defaults over the setup that was just loaded.
+  applySkyTheme(sky);
   applyRender();
   respawn();
+}
+
+/**
+ * Switch visual theme. Deliberately much cheaper than a regenerate: the
+ * heightfield, the park and the props are all theme-independent, so only the
+ * terrain mesh has to be remade — its slope colours are baked per-vertex — and
+ * the sky, fog and lights are repainted in place. Nothing respawns, so a theme
+ * can be switched mid-flight and judged on the same jump.
+ */
+function applyTheme() {
+  applyThemeTunables();
+  applySkyTheme(sky);
+  rebuildTerrainMesh();
+  applyRender();
 }
 
 function respawn() {
@@ -110,7 +133,7 @@ function respawn() {
 }
 
 applyRender();
-buildGui({ respawn, regenerateWorld, applyRender });
+buildGui({ respawn, regenerateWorld, applyRender, applyTheme });
 
 // ---- resize ----------------------------------------------------------------
 
@@ -213,6 +236,8 @@ if (import.meta.env.DEV) {
       chase,
       T,
       respawn,
+      /** Set `T.theme` then call this — same path the panel's dropdown takes. */
+      applyTheme,
       /**
        * Run physics forward with fixed input, without waiting for real frames.
        * Offscreen/headless contexts don't fire requestAnimationFrame, so this is

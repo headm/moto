@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { T } from '../core/tunables';
+import { activeTheme } from './themes';
 
 /**
  * Gradient sky dome plus matching fog.
@@ -7,17 +8,22 @@ import { T } from '../core/tunables';
  * The dome is a single inward-facing sphere with a two-stop vertical gradient —
  * cheaper and more controllable than a cubemap, and the horizon colour can be
  * handed straight to the fog so the terrain edge dissolves instead of ending.
+ *
+ * Every colour here comes from the active theme, and all of them can be swapped
+ * in place by `applySkyTheme` — uniforms, fog and both lights. Nothing is
+ * rebuilt, so switching theme costs a few colour writes on this side; only the
+ * terrain mesh, whose slope colours are baked into vertices, has to be remade.
  */
 
-const ZENITH = new THREE.Color('#3f6da8');
-const HORIZON = new THREE.Color('#cbb896');
-const GROUND_HAZE = new THREE.Color('#8f7a5c');
+const ZENITH = new THREE.Color();
+const HORIZON = new THREE.Color();
+const GROUND_HAZE = new THREE.Color();
 
 export interface Sky {
   dome: THREE.Mesh;
   sun: THREE.DirectionalLight;
   hemi: THREE.HemisphereLight;
-  horizonColor: THREE.Color;
+  fog: THREE.FogExp2;
 }
 
 export function createSky(scene: THREE.Scene, fogDensity: number): Sky {
@@ -63,9 +69,10 @@ export function createSky(scene: THREE.Scene, fogDensity: number): Sky {
   dome.renderOrder = -1;
   scene.add(dome);
 
-  scene.fog = new THREE.FogExp2(HORIZON.getHex(), fogDensity);
+  const fog = new THREE.FogExp2(0xffffff, fogDensity);
+  scene.fog = fog;
 
-  const sun = new THREE.DirectionalLight(0xfff1d8, T.light.sunIntensity);
+  const sun = new THREE.DirectionalLight(0xffffff, T.light.sunIntensity);
   sun.castShadow = true;
   sun.shadow.mapSize.set(2048, 2048);
   sun.shadow.camera.near = 1;
@@ -79,10 +86,37 @@ export function createSky(scene: THREE.Scene, fogDensity: number): Sky {
   scene.add(sun);
   scene.add(sun.target);
 
-  const hemi = new THREE.HemisphereLight(0xbcd8ff, 0x6b5436, T.light.hemiIntensity);
+  const hemi = new THREE.HemisphereLight(0xffffff, 0xffffff, T.light.hemiIntensity);
   scene.add(hemi);
 
-  return { dome, sun, hemi, horizonColor: HORIZON };
+  const sky: Sky = { dome, sun, hemi, fog };
+  applySkyTheme(sky);
+  return sky;
+}
+
+/**
+ * Repaint the sky, fog and both lights from the active theme.
+ *
+ * The uniforms are mutated in place rather than reassigned: `ShaderMaterial`
+ * uploads whatever the `THREE.Color` currently holds, so writing into the same
+ * object avoids a uniform rebind, and — more importantly — keeps the sRGB to
+ * linear conversion `Color.set` performs, which the shader below relies on.
+ */
+export function applySkyTheme(sky: Sky) {
+  const t = activeTheme();
+
+  ZENITH.set(t.sky.zenith);
+  HORIZON.set(t.sky.horizon);
+  GROUND_HAZE.set(t.sky.ground);
+
+  // The fog is tinted to the horizon stop on purpose — that match is what makes
+  // the terrain edge dissolve rather than end. It is why the lunar theme's near
+  // black sky needs a near black fog and not simply no fog at all.
+  sky.fog.color.set(t.sky.horizon);
+
+  sky.sun.color.set(t.sun);
+  sky.hemi.color.set(t.hemiSky);
+  sky.hemi.groundColor.set(t.hemiGround);
 }
 
 /**

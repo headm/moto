@@ -1,5 +1,6 @@
 import GUI from 'lil-gui';
 import { T, saveTunables, loadTunables, resetTunables } from '../core/tunables';
+import { THEMES, THEME_NAMES } from '../world/themes';
 
 /**
  * The live tuning panel. This is not a nicety — M1 is entirely about finding
@@ -11,7 +12,13 @@ export interface DebugCallbacks {
   respawn(): void;
   regenerateWorld(): void;
   applyRender(): void;
+  applyTheme(): void;
 }
+
+/** Label -> key, built from the themes themselves so adding one needs no edit here. */
+const THEME_OPTIONS: Record<string, string> = Object.fromEntries(
+  THEME_NAMES.map((name) => [THEMES[name].label, name]),
+);
 
 export function buildGui(cb: DebugCallbacks): GUI {
   const gui = new GUI({ title: 'moto — tuning', width: 320 });
@@ -36,6 +43,18 @@ export function buildGui(cb: DebugCallbacks): GUI {
   };
 
   gui.add(actions, 'respawn').name('Respawn (R)');
+
+  // Top level rather than in a folder: it is the one control here that changes
+  // what the game looks like wholesale, and it is meant to be flipped back and
+  // forth mid-ride. `refresh` because the theme rewrites the Light and Render
+  // dials, which would otherwise keep showing the previous theme's values.
+  gui
+    .add(T, 'theme', THEME_OPTIONS)
+    .name('Visual theme')
+    .onChange(() => {
+      cb.applyTheme();
+      refresh(gui);
+    });
 
   const bike = gui.addFolder('Bike').close();
   bike.add(T.bike, 'gravity', 6, 30, 0.1);
