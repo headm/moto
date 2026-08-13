@@ -5,6 +5,7 @@
  */
 
 import type { LandingReport } from '../bike/landing';
+import type { ScoreEvent } from '../game/scoring';
 
 const BAND_LABEL = {
   clean: 'CLEAN LANDING',
@@ -18,6 +19,11 @@ function el<T extends HTMLElement>(id: string): T {
   return node as T;
 }
 
+/** Thousands separators: a five-figure score is unreadable without them. */
+function fmt(n: number): string {
+  return Math.round(n).toLocaleString('en-US');
+}
+
 export class Hud {
   private speedEl = el('speed');
   private airEl = el('air');
@@ -28,7 +34,15 @@ export class Hud {
   private boostFillEl = el('boostfill');
   private landingEl = el('landing');
   private landingBandEl = el('landingband');
+  private landingTrickEl = el('landingtrick');
+  private landingScoreEl = el('landingscore');
   private landingDetailEl = el('landingdetail');
+  private trickTextEl = el('tricktext');
+  private trickPointsEl = el('trickpoints');
+  private scoreEl = el('scorevalue');
+  private bestEl = el('scorebest');
+  private comboEl = el('combo');
+  private comboValueEl = el('combovalue');
 
   /** Seconds the landing banner stays up. */
   private landingTimer = 0;
@@ -36,6 +50,11 @@ export class Hud {
   private lastBoostState = 'ready';
   private lastSpeed = -1;
   private lastAir = '';
+  private lastTrick = '';
+  private lastPending = -1;
+  private lastScore = -1;
+  private lastBest = -1;
+  private lastMultiplier = -1;
   private airVisible = false;
   private statsAccum = 0;
   private hintFaded = false;
@@ -47,8 +66,22 @@ export class Hud {
     window.setTimeout(() => this.hintEl.classList.add('fade'), 4000);
   }
 
-  private showLanding(r: LandingReport) {
+  /**
+   * One banner for the whole touchdown: what you did, what it paid, and how
+   * square you were. `score` is null only for a landing too short to be scored,
+   * which is also too short to be rated — so in practice they arrive together.
+   */
+  private showLanding(r: LandingReport, score: ScoreEvent | null) {
     this.landingBandEl.textContent = BAND_LABEL[r.band];
+    this.landingTrickEl.textContent = score?.label ?? '';
+    // Losing a run reads as a number going away, not as an absence of one.
+    this.landingScoreEl.textContent = score
+      ? score.gained > 0
+        ? `+${fmt(score.gained)}` + (score.multiplier > 1 ? `  ×${score.multiplier}` : '')
+        : score.risked > 0
+          ? `LOST ${fmt(score.risked)}`
+          : ''
+      : '';
     // The angle errors are what you tune the bands against, so they're on screen
     // rather than in the console.
     const lost = Math.round((1 - r.keptSpeed) * 100);
@@ -58,6 +91,11 @@ export class Hud {
       (lost > 0 ? `  ·  -${lost}% speed` : '');
     this.landingEl.className = `landing show ${r.band}`;
     this.landingTimer = 1.6;
+  }
+
+  private hideLanding() {
+    this.landingTimer = 0;
+    this.landingEl.classList.remove('show');
   }
 
   update(opts: {
@@ -70,17 +108,26 @@ export class Hud {
     boostState: 'ready' | 'active' | 'cooling';
     /** Consumed here — `pending` is cleared once shown. */
     landing: LandingReport;
+    /** Trick names completed so far in the current flight. */
+    trick: string;
+    /** Points riding on the current flight. */
+    pending: number;
+    score: number;
+    best: number;
+    multiplier: number;
+    /** Consumed here — the caller clears it once shown. */
+    scoreEvent: ScoreEvent | null;
     fps: number;
     frameDt: number;
     tris: number;
   }) {
     if (opts.landing.pending) {
       opts.landing.pending = false;
-      this.showLanding(opts.landing);
+      this.showLanding(opts.landing, opts.scoreEvent);
     }
     if (this.landingTimer > 0) {
       this.landingTimer -= opts.frameDt;
-      if (this.landingTimer <= 0) this.landingEl.classList.remove('show');
+      if (this.landingTimer <= 0) this.hideLanding();
     }
 
     if (opts.boostState !== this.lastBoostState) {
@@ -100,6 +147,12 @@ export class Hud {
     if (show !== this.airVisible) {
       this.airVisible = show;
       this.airEl.classList.toggle('on', show);
+      // The two share a slot, so the new flight evicts the last one's result.
+      // That is the right precedence: what you are doing now outranks what you
+      // did a second ago, and the score and combo top-right keep the record.
+      // The banner survives the first 0.25 s of a flight, which is what makes a
+      // rolled-out landing still readable.
+      if (show) this.hideLanding();
     }
     if (show) {
       const text = opts.airTime.toFixed(2);
@@ -107,6 +160,31 @@ export class Hud {
         this.lastAir = text;
         this.airTimeEl.textContent = text;
       }
+      if (opts.trick !== this.lastTrick) {
+        this.lastTrick = opts.trick;
+        this.trickTextEl.textContent = opts.trick;
+      }
+      // Rounded to ten so the counter reads as a rising figure rather than as a
+      // blur of digits — airtime alone moves it several points a frame.
+      const pending = Math.round(opts.pending / 10) * 10;
+      if (pending !== this.lastPending) {
+        this.lastPending = pending;
+        this.trickPointsEl.textContent = pending > 0 ? `+${fmt(pending)}` : '';
+      }
+    }
+
+    if (opts.score !== this.lastScore) {
+      this.lastScore = opts.score;
+      this.scoreEl.textContent = fmt(opts.score);
+    }
+    if (opts.best !== this.lastBest) {
+      this.lastBest = opts.best;
+      this.bestEl.textContent = fmt(opts.best);
+    }
+    if (opts.multiplier !== this.lastMultiplier) {
+      this.lastMultiplier = opts.multiplier;
+      this.comboValueEl.textContent = String(opts.multiplier);
+      this.comboEl.classList.toggle('on', opts.multiplier > 1);
     }
 
     this.statsAccum += opts.frameDt;

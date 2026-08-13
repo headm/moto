@@ -86,6 +86,19 @@ export function buildGui(cb: DebugCallbacks): GUI {
   boost.add(T.boost, 'dustRate', 0, 200, 5);
   boost.add(T.boost, 'ignitionPunch', 0, 1, 0.05);
 
+  const score = gui.addFolder('Tricks & score').close();
+  score.add(T.score, 'airGain', 0, 200, 1);
+  score.add(T.score, 'flip', 0, 2000, 10);
+  score.add(T.score, 'spin', 0, 2000, 10);
+  score.add(T.score, 'roll', 0, 2000, 10);
+  score.add(T.score, 'whip', 0, 2000, 10);
+  score.add(T.score, 'rotationDeg', 180, 360, 5);
+  score.add(T.score, 'whipAngle', 5, 90, 1);
+  score.add(T.score, 'whipHold', 0.05, 2, 0.05);
+  score.add(T.score, 'keepSketchy', 0, 1, 0.05);
+  score.add(T.score, 'maxMultiplier', 1, 50, 1);
+  score.add(T.score, 'comboWindow', 0.5, 15, 0.5);
+
   const steer = gui.addFolder('Steering & lean').close();
   steer.add(T.steer, 'maxYawRate', 0.4, 5, 0.05);
   steer.add(T.steer, 'yawResponse', 1, 25, 0.5);

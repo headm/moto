@@ -13,6 +13,8 @@ import { stepBike } from './bike/physics';
 import { createBikeModel, syncBikeModel, lerpAngle } from './bike/model';
 import { ChaseCamera } from './game/camera';
 import { BoostFx } from './game/boostFx';
+import { Tricks } from './game/tricks';
+import { Scoring } from './game/scoring';
 import { Hud } from './ui/hud';
 import { buildGui } from './ui/debug';
 
@@ -69,6 +71,9 @@ bikeModel.chassis.add(boostFx.rig);
 const chase = new ChaseCamera(window.innerWidth / window.innerHeight);
 chase.reset(bike.pos, bike.yaw);
 
+const tricks = new Tricks();
+const scoring = new Scoring();
+
 const input = new Input();
 const hud = new Hud();
 input.onAnyKey = () => hud.fadeHint();
@@ -99,6 +104,9 @@ function regenerateWorld() {
 function respawn() {
   resetBike(bike, hf);
   chase.reset(bike.pos, bike.yaw);
+  // The score survives a respawn but the combo does not — see Scoring.reset.
+  tricks.reset();
+  scoring.reset();
 }
 
 applyRender();
@@ -131,6 +139,10 @@ const loop = createLoop({
 
   onStep(dt) {
     stepBike(bike, hf, input.state, dt);
+    // Both run at physics rate, not render rate: two landings can fall inside a
+    // single rendered frame, and the second must not erase the first's combo.
+    tricks.step(bike, dt);
+    scoring.step(bike, tricks);
   },
 
   onRender(alpha, frameDt) {
@@ -167,10 +179,17 @@ const loop = createLoop({
           : 1,
       boostState: boosting ? 'active' : bike.boostCooldown > 0 ? 'cooling' : 'ready',
       landing: bike.landing,
+      trick: tricks.live.label,
+      pending: scoring.pending,
+      score: scoring.total,
+      best: scoring.best,
+      multiplier: scoring.multiplier,
+      scoreEvent: scoring.event,
       fps: loop.fps,
       frameDt,
       tris: triangleCount,
     });
+    scoring.event = null;
 
     renderer.render(scene, chase.camera);
   },
@@ -184,6 +203,8 @@ if (import.meta.env.DEV) {
   Object.assign(window as unknown as Record<string, unknown>, {
     __moto: {
       bike,
+      tricks,
+      scoring,
       get hf() {
         return hf;
       },
@@ -200,7 +221,11 @@ if (import.meta.env.DEV) {
       fastForward(seconds: number, hold: Partial<typeof input.state> = {}) {
         const held = { ...input.state, ...hold, respawn: false };
         const steps = Math.round(seconds * 120);
-        for (let i = 0; i < steps; i++) stepBike(bike, hf, held, 1 / 120);
+        for (let i = 0; i < steps; i++) {
+          stepBike(bike, hf, held, 1 / 120);
+          tricks.step(bike, 1 / 120);
+          scoring.step(bike, tricks);
+        }
         chase.reset(bike.pos, bike.yaw);
         return this.probe();
       },

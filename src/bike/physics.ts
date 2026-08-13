@@ -44,8 +44,8 @@ const fwd = new THREE.Vector3();
 const right = new THREE.Vector3();
 const nrm = new THREE.Vector3();
 
-/** Wrap to (-PI, PI]. */
-function wrapAngle(a: number): number {
+/** Wrap to (-PI, PI]. Exported: trick detection accumulates the same deltas. */
+export function wrapAngle(a: number): number {
   return Math.atan2(Math.sin(a), Math.cos(a));
 }
 

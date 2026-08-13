@@ -182,6 +182,40 @@ export const DEFAULTS = {
     minAirTime: 0.25,
   },
 
+  score: {
+    /**
+     * Points per second-squared of air. Airtime is *squared* before this is
+     * applied, so a 2 s flight is worth four times a 1 s one — a big jump has to
+     * pay disproportionately or nobody gives up a safe landing for it.
+     */
+    airGain: 40,
+    /** Base value of one completed revolution on each axis. */
+    flip: 250,
+    spin: 150,
+    roll: 200,
+    whip: 120,
+    /**
+     * Degrees of accumulated rotation that count as the *first* revolution.
+     * Under 360 because the bike leaves a lip already pitched up and lands on a
+     * downslope, so a flip reads as complete a little short of a full turn.
+     * Every revolution after the first still costs a whole 360.
+     */
+    rotationDeg: 350,
+    /** Whip: degrees off the direction of travel, and seconds it must be held. */
+    whipAngle: 25,
+    whipHold: 0.4,
+    /**
+     * Fraction of a flight's points banked by a sketchy landing. A clean landing
+     * banks all of it, a bad one none — this is the middle band, and it is the
+     * dial that decides whether going for a huge trick is worth the risk.
+     */
+    keepSketchy: 0.5,
+    /** Combo ceiling. Uncapped, one good session runs away with the leaderboard. */
+    maxMultiplier: 10,
+    /** Seconds of unbroken ground contact before the combo drops. */
+    comboWindow: 2,
+  },
+
   steer: {
     maxYawRate: 2.2,
     yawResponse: 9,

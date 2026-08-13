@@ -75,12 +75,29 @@
       .boost.active label { color: var(--accent); font-weight: 700; }
       .boost.active i { background: #fff8ea; }
 
-      .air {
+      /*
+       * The airtime readout and the landing banner share one slot, and only one
+       * of them is ever up: you are either in the air or you have just landed.
+       * They are two states of the same question — what is this flight worth —
+       * so giving each its own patch of screen was wrong twice over. Stacked,
+       * the pair reached 46% of viewport height, and the camera holds the bike
+       * at 73% with the horizon at 41%: that put the banner exactly on the
+       * ground you read the next feature off. Sharing one slot ends the box at
+       * ~28%, which is sky in every state the camera can be in.
+       *
+       * `.air` stays in flow and defines the box; `.landing` is laid over it.
+       * The air block keeps its box when hidden, so nothing shifts between a
+       * grounded and an airborne frame.
+       */
+      .centre {
         position: absolute;
         left: 50%;
-        top: 14%;
+        top: 13%;
         transform: translateX(-50%);
         text-align: center;
+      }
+
+      .air {
         opacity: 0;
         transition: opacity 120ms linear;
       }
@@ -94,13 +111,68 @@
         letter-spacing: -1px;
       }
       .air span { font-size: 12px; color: var(--hud-dim); letter-spacing: 2px; }
+      /* Trick names, appearing as each rotation completes. */
+      .air em {
+        display: block;
+        margin-top: 10px;
+        font-style: normal;
+        font-size: 22px;
+        font-weight: 700;
+        letter-spacing: 1px;
+        white-space: nowrap;
+      }
+      /* What the flight is currently worth — the number you stand to lose. */
+      .air i {
+        display: block;
+        margin-top: 2px;
+        font-style: normal;
+        font-size: 19px;
+        font-weight: 700;
+        color: var(--accent);
+        font-variant-numeric: tabular-nums;
+      }
+
+      .score {
+        position: absolute;
+        right: 28px;
+        /* Clear of the collapsed tuning panel, which owns the top-right corner. */
+        top: 36px;
+        text-align: right;
+      }
+      .score > b {
+        display: block;
+        font-size: 40px;
+        font-weight: 700;
+        letter-spacing: -1px;
+        font-variant-numeric: tabular-nums;
+      }
+      .score > span {
+        display: block;
+        font-size: 11px;
+        color: var(--hud-dim);
+        letter-spacing: 2px;
+      }
+      .score .best { margin-top: 8px; }
+      .score .best i {
+        font-style: normal;
+        color: var(--hud);
+        font-variant-numeric: tabular-nums;
+      }
+      .combo {
+        font-size: 24px;
+        font-weight: 700;
+        color: var(--accent);
+        font-variant-numeric: tabular-nums;
+        opacity: 0;
+        transition: opacity 150ms linear;
+      }
+      .combo.on { opacity: 1; }
 
       .landing {
         position: absolute;
+        top: 0;
         left: 50%;
-        top: 27%;
         transform: translateX(-50%);
-        text-align: center;
         opacity: 0;
         transition: opacity 220ms ease-out;
       }
@@ -118,14 +190,31 @@
         letter-spacing: 1px;
         white-space: nowrap;
       }
-      .landing.clean b { color: #6ee06e; }
-      .landing.sketchy b { color: #ffb340; }
-      .landing.bad b { color: #e8563f; }
+      .landing em {
+        display: block;
+        margin-top: 2px;
+        font-style: normal;
+        font-size: 20px;
+        font-weight: 700;
+        letter-spacing: 1px;
+        white-space: nowrap;
+      }
+      .landing u {
+        display: block;
+        margin: 3px 0 4px;
+        text-decoration: none;
+        font-size: 20px;
+        font-weight: 700;
+        font-variant-numeric: tabular-nums;
+      }
+      .landing.clean b, .landing.clean u { color: #6ee06e; }
+      .landing.sketchy b, .landing.sketchy u { color: #ffb340; }
+      .landing.bad b, .landing.bad u { color: #e8563f; }
 
       #stats {
         position: absolute;
         right: 18px;
-        top: 14px;
+        bottom: 14px;
         text-align: right;
         font-size: 12px;
         color: var(--hud-dim);
@@ -173,8 +262,23 @@
         <label>BOOST</label>
         <div class="bar"><i id="boostfill"></i></div>
       </div>
-      <div class="air" id="air"><b id="airtime">0.00</b><span>AIR TIME</span></div>
-      <div class="landing" id="landing"><b id="landingband">CLEAN</b><span id="landingdetail"></span></div>
+      <div class="centre">
+        <div class="air" id="air">
+          <b id="airtime">0.00</b><span>AIR TIME</span>
+          <em id="tricktext"></em><i id="trickpoints"></i>
+        </div>
+        <div class="landing" id="landing">
+          <b id="landingband">CLEAN</b>
+          <em id="landingtrick"></em>
+          <u id="landingscore"></u>
+          <span id="landingdetail"></span>
+        </div>
+      </div>
+      <div class="score" id="score">
+        <div class="combo" id="combo">×<span id="combovalue">1</span></div>
+        <b id="scorevalue">0</b><span>SCORE</span>
+        <span class="best">BEST <i id="scorebest">0</i></span>
+      </div>
       <div id="stats"></div>
     </div>
     <script type="module" src="/src/main.ts"></script>

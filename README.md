@@ -54,11 +54,70 @@ The jump is a bunny hop that spends whatever the suspension has stored, so one t
 compression goes noticeably higher than one from a settled bike — about 1.3 m flat, 1.6 m loaded. You
 get exactly one per ground contact, so it can't be mashed into a hover.
 
-## Current state: M3 — a proving strip of ramps
+## Current state: M4 — it keeps score
 
-Riding works, landings are rated, and there are ramps. Terrain, suspension, steering, lean, air
-rotation, jump, boost, landing feedback, the chase camera and a first set of features are in. There
-are no tricks and no scoring yet — that's M4.
+Riding works, landings are rated, there are ramps, and what you do between the lip and the landing is
+now worth something. Terrain, suspension, steering, lean, air rotation, jump, boost, trick detection,
+scoring, combos, landing feedback, the chase camera and a full set of features are in.
+
+## Tricks
+
+Tricks need no new keys. They are the air controls you already have, held long enough to come all the
+way round.
+
+| Trick | How | Base value |
+|---|---|---|
+| Backflip / Frontflip | `↓` / `↑` held in the air | 250 |
+| 360, 720, 1080 | `A` / `D` held in the air | 150 per turn |
+| Barrel roll | `←` / `→` held in the air | 200 |
+| Whip | kick the bike sideways of where it's going, then straighten it before you land | 120 |
+
+Rotation is counted **signed**, and that one choice is what separates a spin from a whip: a 360 sums
+to 360, while a whip out and back sums to roughly nothing even though the bike passes through the same
+angles. So a completed spin can't also bank a whip — and a whip still hanging out at touchdown doesn't
+count either, because at that point it's just a sideways landing, which the landing rating already
+punishes.
+
+The first revolution completes at **350°, not 360**. The bike leaves a lip already pitched up and
+lands on a downslope, so a flip that reads as finished to the rider is a few degrees short of a
+geometric turn. Every turn *after* the first still costs a full 360 — 700° is a single, not a double.
+
+Combined rotations name themselves: `Backflip 360`, `Double Backflip`, `Backflip 360 Whip`.
+
+Poses — superman, nac-nac, heel clicker — are deliberately not in yet. The rider is six boxes welded
+to the chassis, and a pose that scores without visibly happening is a key press for points. They
+arrive with the rider rig in M5.
+
+## Scoring
+
+```
+(airTime² × airGain + trick values) × combo
+```
+
+**Airtime is squared.** Two seconds pays four times one, not twice. A bigger jump has to be worth
+disproportionately more than a safe one or nobody takes it, and that arithmetic is the whole of design
+pillar #1 expressed as a number.
+
+**Points are banked by landings, not by air.** Everything earned in flight is at risk until the wheels
+are down, so a huge run is a real gamble rather than a formality:
+
+| Landing | Banks | Combo |
+|---|---|---|
+| Clean | all of it | +1, up to ×10 |
+| Sketchy | half | held where it is |
+| Bad | nothing | back to ×1 |
+
+The combo also drops after two seconds of unbroken ground contact, which makes it a hot streak rather
+than a balance — and makes the whoops worth riding. Chain small clean hops to build the multiplier,
+then cash it on something big: a backflip off #7 at ×7 is worth more than four of them taken cold.
+
+Session best persists to `localStorage`. `R` keeps your score, because respawn is how you cross the
+park and travelling shouldn't cost points, but it does drop the combo — nothing was landed.
+
+Both trick detection and scoring are stepped at **physics rate, not render rate**. Two landings can
+fall inside one rendered frame, and the second must not erase the first's effect on the combo.
+
+## The park
 
 Features are numbered in this table and in `npm run sim`, so a feature can be named the same way in the
 harness and in conversation. The numbers are not signposted in the world — flags on poles at every
@@ -229,8 +288,8 @@ Landings came before ramps because tolerance is an *input* to ramp geometry — 
 landing slope without knowing what counts as clean — and because the jump and boost already provide
 enough air to tune against. Boost is deliberately ahead of the ramps: because launchability goes as v², it converts existing
 terrain into jumps, which is the cheapest way to find out how much air is fun *before* committing to
-ramp geometry. It currently has no supply cost beyond its cooldown; earning charges from clean
-landings comes with the scoring loop in M3.
+ramp geometry. It still has no supply cost beyond its cooldown — now that there is a scoring loop to
+spend against, earning charges from clean landings is the obvious next thing to try.
 
 **The tuning panel is the point of these milestones.** Press `H`, and change things while riding —
 every number that affects feel is in there, and nothing downstream hardcodes a constant. `Presets →
@@ -246,8 +305,8 @@ big it all feels).
 ```
 src/core/      loop (fixed timestep), input, tunables
 src/world/     heightfield, terrain mesh, sky
-src/bike/      state, physics, model
-src/game/      chase camera
+src/bike/      state, physics, landing bands, model
+src/game/      chase camera, boost fx, trick detection, scoring
 src/ui/        HUD, tuning panel
 scripts/sim.ts headless physics harness
 ```
@@ -256,5 +315,5 @@ The one structural thing worth knowing: terrain *and* (from M2) every ramp live 
 heightfield, so ground contact is an O(1) height sample rather than a mesh raycast. No tunneling at
 speed, no collider/visual desync. The cost is that overhangs are impossible — fine for motocross.
 
-In dev builds, `window.__moto` exposes the bike state, a `probe()` snapshot and a `fastForward(seconds,
-input)` that steps physics without waiting for frames.
+In dev builds, `window.__moto` exposes the bike state, the trick and score trackers, a `probe()`
+snapshot and a `fastForward(seconds, input)` that steps physics without waiting for frames.

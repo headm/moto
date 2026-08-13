@@ -184,7 +184,8 @@ and jump-side banners, skipped on ramp faces and ride lines.
 
 ## 6. Tricks and scoring
 
-Trick detection reads the rotation accumulators at the moment of landing:
+**Built in M4**, except the poses. Trick detection reads the rotation accumulators at the moment of
+landing:
 
 | Trick | Detection |
 |---|---|
@@ -194,15 +195,28 @@ Trick detection reads the rotation accumulators at the moment of landing:
 | Whip | yaw held > 25° off travel direction for > 0.4 s, returned before landing |
 | Poses (superman, nac-nac, heel clicker, dead sailor) | pose key held ≥ 0.3 s in air, released before landing |
 
-Combined rotations name themselves ("Flip Whip", "360 Superman"). Poses stack with rotations.
+The accumulators are **signed**, which is what makes a whip distinguishable from a spin at all: both
+pass through the same angles, but a whip sums back to nothing. A completed spin therefore suppresses
+the whip rather than stacking with it. Only the *first* revolution completes at 350°; later ones cost
+a full 360, or 700° would read as a double.
+
+Poses are deferred to M5. They need a rider rig to be visible, and a pose that scores without visibly
+happening is a key press for points — the one trick in this list that art is a prerequisite for.
+
+Combined rotations name themselves ("Backflip 360", "Backflip 360 Whip"). Poses will stack with
+rotations.
 
 **Scoring**: `airTime² * airGain` + sum of trick base values, then `× comboMultiplier`.
 Multiplier increments on each clean landing and resets on a bad landing or on being grounded for
-more than 2 s. Banked score only lands when you touch down clean — so a huge run is a real gamble. Session
-best is persisted to `localStorage`.
+more than 2 s; a sketchy landing banks half and holds the multiplier where it is. Banked score only
+lands when you touch down clean — so a huge run is a real gamble. Session best is persisted to
+`localStorage`.
 
-HUD: speed, live airtime counter that grows and changes color, trick names streaming in as they
-complete, combo multiplier, score, session best.
+Detection and scoring both step at physics rate, not render rate: two landings can fall inside a
+single rendered frame, and the second must not overwrite the first's effect on the combo.
+
+HUD: speed, live airtime counter, trick names streaming in as they complete, the points currently at
+risk, combo multiplier, score, session best.
 
 ## 7. Camera
 
@@ -234,7 +248,7 @@ needed to fly the bike.
 | Barrel roll | ← → | Bumpers |
 | Jump | Space | A |
 | Boost | Shift (either) or E | B |
-| Trick pose *(M3)* | 1–4 | B / X / Y |
+| Trick pose *(M5, with the rider rig)* | 1–4 | B / X / Y |
 | Respawn | R | Start |
 | Tuning panel | H | — |
 
@@ -421,9 +435,60 @@ required landing zone by ~25 m on a single ramp, so landings are long slopes, no
 strip first, then the park, then a validator that sweeps every feature across the speed band.
 **Gate:** hitting a kicker and landing a backflip is satisfying.
 
-**M4 — It's a game (2 days).** Trick detection, scoring, combos, HUD, session best. Full park
+**M4 — It's a game (2 days). Done.** Trick detection, scoring, combos, HUD, session best. Full park
 layout with all feature types. Preload/pop mechanic. **Gate:** a five-minute session where you want
 to beat your score.
+
+Tricks needed no new controls and no new physics — the air controls already produced the rotation,
+and nothing had been reading it. Detection sits entirely outside `stepBike`, watching the orientation
+the integrator already produced, so a trick can be renamed or re-valued with no risk of changing how
+the bike rides.
+
+The one thing that did not survive contact: **poses**. Superman and nac-nac are in §6 and are cut
+from M4, because the rider is six boxes welded to the chassis. Scoring a pose that doesn't visibly
+happen is paying the player for a key press. They move to M5 with the rider rig, which is the
+milestone that makes them legible.
+
+Boost charges earned from clean landings are still not in. There is finally a currency to spend
+against, which is what that idea was waiting for.
+
+Five things this turned up:
+
+1. **A signed sum tells you things a total cannot.** Accumulating rotation with its sign is the
+   entire mechanism separating a whip from a spin: both sweep the same angles, but one sums to 360
+   and the other back to zero. Any measure that takes `abs` per sample instead of at the end throws
+   that away and can no longer tell a lap from an out-and-back.
+2. **A landing is an event, so it has to be consumed at physics rate.** Up to 8 physics steps run per
+   rendered frame, and two of them can each contain a touchdown. Anything reading landings on the
+   render frame either misses one or double-counts it — which for a combo multiplier is silent and
+   compounding. `Tricks` and `Scoring` are both stepped from `onStep`, and only the *display* of a
+   landing is deferred to the frame.
+3. **Reading another module's freshly-written field means re-checking its precondition.** Scoring
+   reads `landing.band`, which physics only writes for flights past `minAirTime`. Score a shorter hop
+   and you score whatever the last real landing happened to be. The guard is the same threshold, not
+   the `pending` flag — the flag belongs to the HUD and is cleared on a different clock.
+4. **A geometric revolution is not a felt one.** The bike leaves a lip already pitched up and lands on
+   a downslope, so a flip completes to the rider several degrees short of 360. Crediting the first
+   revolution at 350° matches what the rider sees; crediting *every* revolution that way would make
+   700° a double, which is why the rule is "350 then 360s" rather than a threshold per turn.
+5. **Two readouts that answer the same question are one readout.** The airtime counter and the
+   landing banner both say "what is this flight worth", and you are always either in the air or just
+   landed — so they share one slot and the newer one evicts the older. Getting there took two wrong
+   turns worth recording. First, positioning them independently: both grew trick names and point
+   totals, and elements offset in per cent but sized in pixels collide at some window height no
+   matter which offsets you pick. Second, stacking them in one flow column: overlap became
+   inexpressible, but the pair now reached 46% of viewport height, and the camera parks the bike at
+   a fixed 73% with the horizon at 41% — so the banner landed exactly on the ground the rider reads
+   the next feature off. **Measure where the camera actually puts things before choosing HUD
+   positions**; those three numbers decided the layout, and none of them are guessable.
+
+   Below the bike was then tried as an alternative and rejected on looking at it. It clears the
+   sightline just as well on paper, but the two slots are not symmetric: the sky band has the whole
+   upper third to grow into, while below the bike there is only the ~20% between the rear wheel and
+   the bottom edge. Everything down there has to anchor to the bottom and grow *upward* — hang it
+   from a top offset and the last line clips off the screen — and even then the airtime readout with
+   a trick name reaches the rear wheel. Removed rather than left on a dial: the question is settled,
+   and a branch kept "in case" is a branch that has to keep working.
 
 **M5 — It looks made (2–3 days).** Real bike model with animated wheels/forks, rider rig with pose
 blending, shadows, sky, fog, scatter props, particles (dirt kick-up, landing puff, dust trail).

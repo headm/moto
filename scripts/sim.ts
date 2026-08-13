@@ -20,6 +20,8 @@ import type { Kicker, Tabletop } from '../src/world/ramps';
 import { PARK, SETPIECE } from '../src/world/park';
 import { createBikeState, resetBike, groundSpeed, type BikeState } from '../src/bike/state';
 import { stepBike } from '../src/bike/physics';
+import { Tricks, type TrickTally } from '../src/game/tricks';
+import { Scoring, type ScoreEvent } from '../src/game/scoring';
 
 const STEP = 1 / 120;
 
@@ -974,6 +976,260 @@ console.log(
     tiersCleared >= zig.tiers - 1,
     `${tiersCleared} of ${zig.tiers - 1} steps cleared, reached y=${reached.toFixed(1)} (summit ${summitY})`,
   );
+  console.log('');
+}
+
+// --- 12. tricks and scoring -------------------------------------------------
+{
+  /**
+   * Fly a scripted set of inputs and report what was detected and banked.
+   *
+   * The bike is *dropped from height* rather than launched off a feature: every
+   * trick then gets the same generous air budget, so these checks measure
+   * detection and scoring rather than whether a given ramp is big enough to fit
+   * a double backflip into. `drive` gets the state as well as the input so a
+   * check can force an attitude directly, the way section 6 does.
+   */
+  function fly(
+    drive: (t: number, i: InputState, s: BikeState) => void,
+    height = 110,
+  ): { tally: TrickTally | null; event: ScoreEvent | null; score: Scoring; state: BikeState } {
+    const s = createBikeState();
+    resetBike(s, hf);
+    const tricks = new Tricks();
+    const score = new Scoring();
+    const input = idle();
+
+    for (let i = 0; i < 60; i++) {
+      stepBike(s, hf, input, STEP);
+      tricks.step(s, STEP);
+      score.step(s, tricks);
+    }
+
+    s.pos.y += height;
+    s.vel.set(0, 0, -15);
+    s.yaw = Math.PI;
+
+    let tally: TrickTally | null = null;
+    for (let i = 0; i < 120 * 30; i++) {
+      drive(i * STEP, input, s);
+      stepBike(s, hf, input, STEP);
+      tricks.step(s, STEP);
+      // The tally is only valid on the step it lands, so it has to be copied.
+      if (tricks.landed && !tally) tally = { ...tricks.landed };
+      score.step(s, tricks);
+      if (score.event) break;
+      if (!finite(s)) break;
+    }
+    return { tally, event: score.event, score, state: s };
+  }
+
+  /** Hold one air axis for `seconds`, then let go and ride it out. */
+  const holdFor = (axis: 'pitch' | 'roll' | 'steer', dir: number, seconds: number) =>
+    (t: number, i: InputState) => {
+      i.pitch = 0;
+      i.roll = 0;
+      i.steer = 0;
+      if (t < seconds) i[axis] = dir;
+    };
+
+  // Air rates are 4.2 / 3.4 / 2.6 rad/s for pitch / roll / yaw, so a revolution
+  // costs 1.50 / 1.85 / 2.42 s. These holds clear one turn with a little margin.
+  const back = fly(holdFor('pitch', 1, 1.6));
+  const front = fly(holdFor('pitch', -1, 1.6));
+  const double = fly(holdFor('pitch', 1, 3.1));
+  const spin = fly(holdFor('steer', 1, 2.5));
+  const barrel = fly(holdFor('roll', 1, 2.0));
+
+  check('a backflip is detected', back.tally?.label === 'Backflip', `${back.tally?.label || 'nothing'} (${back.tally?.flips} flip)`);
+  check('a frontflip is told apart from it', front.tally?.label === 'Frontflip', `${front.tally?.label || 'nothing'} (${front.tally?.flips} flip)`);
+  check(
+    'two turns is a double, not two singles',
+    double.tally?.label === 'Double Backflip',
+    `${double.tally?.label || 'nothing'} over ${double.tally?.airTime.toFixed(2)}s`,
+  );
+  check('a spin is detected', spin.tally?.label === '360', `${spin.tally?.label || 'nothing'}`);
+  check('a barrel roll is detected', barrel.tally?.label === 'Barrel Roll', `${barrel.tally?.label || 'nothing'}`);
+
+  // Combined rotations have to name themselves, or every mixed trick reads as
+  // whichever axis the detector happened to check first.
+  const mixed = fly((t, i) => {
+    i.pitch = t < 1.6 ? 1 : 0;
+    i.steer = t < 2.5 ? 1 : 0;
+  });
+  check('combined rotations name themselves', mixed.tally?.label === 'Backflip 360', `${mixed.tally?.label || 'nothing'}`);
+
+  // A whip is the trick a signed accumulator exists to distinguish: it passes
+  // through the same angles a spin does and has to sum back to nothing.
+  const whip = fly((t, i) => {
+    i.steer = t < 0.8 ? 1 : t < 1.6 ? -1 : 0;
+  });
+  check(
+    'a whip is not a spin',
+    whip.tally?.whip === true && whip.tally?.spins === 0,
+    `${whip.tally?.label || 'nothing'}, yaw summed to ${whip.tally?.spins} spin(s)`,
+  );
+  // ...and the converse: a full rotation must not also bank a whip, even though
+  // it spends far longer than the hold sideways of its travel direction.
+  check(
+    'a spin does not also bank a whip',
+    spin.tally?.whip === false,
+    spin.tally?.whip === false ? 'spin scored as a spin alone' : 'double-counted',
+  );
+
+  // Airtime is the base reward — a plain jump with nothing done in it still pays.
+  const plain = fly(() => {});
+  check(
+    'airtime alone is worth something',
+    plain.event !== null && plain.event.risked > 0 && plain.tally?.label === '',
+    `${plain.tally?.airTime.toFixed(2)}s of air, ${plain.event?.risked} points, no trick`,
+  );
+  // Squared, so the big jump is worth disproportionately more than the safe one.
+  check(
+    'airtime pays back more than linearly',
+    plain.event !== null &&
+      Math.abs(plain.event.risked - plain.tally!.airTime ** 2 * T.score.airGain) < 1,
+    `${plain.tally?.airTime.toFixed(2)}s -> ${plain.event?.risked}, ` +
+      `vs ${(plain.tally!.airTime * T.score.airGain).toFixed(0)} if it were linear`,
+  );
+
+  // The rule the whole thing turns on: points are banked by landings, not by air.
+  const landAt = (errorDeg: number) =>
+    fly((t, i, s) => {
+      i.pitch = 0;
+      // Force the attitude once, on the way down, rather than flying to it.
+      if (Math.abs(t - 1.2) < STEP * 0.6) s.pitch = THREE.MathUtils.degToRad(errorDeg);
+    });
+
+  const clean = landAt(5);
+  const sketchy = landAt(40);
+  const bad = landAt(170);
+
+  check(
+    'a clean landing banks the lot',
+    clean.event?.band === 'clean' && clean.event.gained === clean.event.risked,
+    `${clean.event?.gained} of ${clean.event?.risked} banked`,
+  );
+  check(
+    'a sketchy landing salvages part of it',
+    sketchy.event?.band === 'sketchy' &&
+      sketchy.event.gained === Math.round(sketchy.event.risked * T.score.keepSketchy),
+    `${sketchy.event?.gained} of ${sketchy.event?.risked} banked`,
+  );
+  check(
+    'a bad landing loses everything riding on it',
+    bad.event?.band === 'bad' && bad.event.gained === 0 && bad.score.total === 0,
+    `risked ${bad.event?.risked}, banked ${bad.event?.gained}, session total ${bad.score.total}`,
+  );
+
+  /** Hop on the spot `times` times, sitting on the ground for `rest` between. */
+  function bounce(times: number, rest: number) {
+    const s = createBikeState();
+    resetBike(s, hf);
+    const tricks = new Tricks();
+    const score = new Scoring();
+    const input = idle();
+    const events: ScoreEvent[] = [];
+
+    const advance = (steps: number, until?: () => boolean) => {
+      for (let i = 0; i < steps; i++) {
+        stepBike(s, hf, input, STEP);
+        tricks.step(s, STEP);
+        score.step(s, tricks);
+        if (score.event) {
+          events.push(score.event);
+          score.event = null;
+        }
+        if (until?.()) return;
+      }
+    };
+
+    advance(120);
+    for (let n = 0; n < times; n++) {
+      const before = events.length;
+      s.vel.y = 12;
+      advance(600, () => events.length > before);
+      advance(Math.round(rest / STEP));
+    }
+    return { events, score };
+  }
+
+  const chained = bounce(4, 0.4);
+  const spaced = bounce(4, T.score.comboWindow + 1);
+
+  check(
+    'the combo climbs over consecutive clean landings',
+    chained.events.length === 4 && chained.events.every((e, i) => e.multiplier === i + 1),
+    `multipliers ${chained.events.map((e) => `x${e.multiplier}`).join(' ')}`,
+  );
+  check(
+    'and the same hop is worth more each time',
+    chained.events.every((e, i) => i === 0 || e.gained > chained.events[i - 1].gained),
+    chained.events.map((e) => e.gained).join(' -> '),
+  );
+  check(
+    'sitting still drops the combo',
+    spaced.events.length === 4 && spaced.events.every((e) => e.multiplier === 1),
+    `multipliers ${spaced.events.map((e) => `x${e.multiplier}`).join(' ')} ` +
+      `after ${(T.score.comboWindow + 1).toFixed(1)}s idle between hops`,
+  );
+
+  // A bad landing has to actually cost the streak, not just the flight.
+  {
+    const b = bounce(2, 0.4);
+    check(
+      'a clean landing is what raises it',
+      b.score.multiplier === 3,
+      `x${b.score.multiplier} after 2 clean landings`,
+    );
+  }
+
+  // Nothing above should be able to run the score backwards or to NaN.
+  {
+    let seed = 20260813;
+    const rand = () => {
+      seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+      return seed / 4294967296;
+    };
+    const s = createBikeState();
+    resetBike(s, hf);
+    const tricks = new Tricks();
+    const score = new Scoring();
+    const input = idle();
+    let next = 0;
+    let monotonic = true;
+    let prevTotal = 0;
+    let landings = 0;
+    let bestTrick = '';
+    for (let i = 0; i < 120 * 180; i++) {
+      const t = i * STEP;
+      if (t >= next) {
+        next = t + 0.6;
+        input.throttle = rand() < 0.88 ? 1 : 0;
+        input.brake = rand() < 0.08 ? 1 : 0;
+        input.steer = rand() < 0.5 ? Math.round(rand() * 2 - 1) : 0;
+        input.pitch = rand() < 0.3 ? Math.round(rand() * 2 - 1) : 0;
+        input.roll = rand() < 0.15 ? Math.round(rand() * 2 - 1) : 0;
+        input.boost = rand() < 0.2;
+      }
+      stepBike(s, hf, input, STEP);
+      tricks.step(s, STEP);
+      if (tricks.landed?.label) bestTrick = tricks.landed.label;
+      score.step(s, tricks);
+      if (score.event) {
+        landings++;
+        score.event = null;
+      }
+      if (score.total < prevTotal) monotonic = false;
+      prevTotal = score.total;
+    }
+    check(
+      '3 minutes of chaos keeps a sane score',
+      monotonic && Number.isFinite(score.total) && score.total >= 0,
+      `${score.total.toLocaleString('en-US')} points over ${landings} scored landing(s), ` +
+        `combo x${score.multiplier}` + (bestTrick ? `, last trick "${bestTrick}"` : ''),
+    );
+  }
   console.log('');
 }
 
