@@ -244,8 +244,6 @@ export const DEFAULTS = {
   render: {
     terrainShadows: true,
     wireframe: false,
-    /** Numbered flags at each feature. The numbers match `npm run sim` output. */
-    showMarkers: true,
     /**
      * Deliberately light. Fog matches the sky's horizon band so the terrain edge
      * dissolves instead of ending, but at high density everything collapses into

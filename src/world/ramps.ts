@@ -53,6 +53,8 @@ export interface FeatureBase {
    * rather than weakening it globally to accommodate one deliberate exception.
    */
   demandsBoost?: boolean;
+  /** Surface shading. Earthworks are dirt; structures are masonry. */
+  surface?: 'dirt' | 'stone';
 }
 
 export interface Kicker extends FeatureBase {
@@ -168,9 +170,69 @@ export interface Motte extends FeatureBase {
   entryAngle: number;
   /** Outer wall taper. Short reads as masonry; long reads as a hill. */
   skirt: number;
+  /**
+   * Terrace the flank into this many banks, each ending in a crest that throws
+   * you. 0 leaves a smooth cone.
+   *
+   * Implemented as a sine superimposed on the cone rather than as hard steps, and
+   * that is deliberate: hard steps on a flank this steep produce risers narrower
+   * than a mesh quad, which draw as vertical fins. A sine with the right amplitude
+   * flattens the treads and doubles the bank slope while staying smooth, so it
+   * terraces without any cliff to draw. The endpoints are untouched, so the outer
+   * edge and the summit rim stay where the cone put them.
+   */
+  steps?: number;
+  /**
+   * How hard the terracing bites. 1 exactly flattens each tread; above 1 the
+   * treads tip back slightly, which gives each bank a lip to launch from.
+   */
+  stepStrength?: number;
 }
 
-export type Feature = Kicker | Tabletop | Rollers | Pond | Motte;
+/**
+ * A stepped monument you jump *up*, one tier at a time: platform, crest kicker,
+ * void, then the front face of the next tier `rise` metres higher.
+ *
+ * The rideable stairway is unavoidably shallow. Each tier needs horizontal run to
+ * be jumpable, and the height a single jump can gain is capped by how much the
+ * suspension can throw at the speed a short platform allows — so the along-axis
+ * profile can never be steeper than about 10 degrees overall. The *monument* read
+ * therefore comes from the cross-section: `halfWidth` is the whole block, stepped
+ * and stone-shaded, and `rampHalfWidth` is the narrow stairway cut up the middle
+ * of it. Viewed from the side it is a terraced platform; ridden, it is a stairway.
+ *
+ * Note what the riser can and cannot do. The bike climbs anything up to roughly 60
+ * degrees, and a face steeper than about 45 degrees cannot be drawn at all at this
+ * mesh resolution — so a riser can never be a hard gate. It is a **momentum** gate
+ * instead, which is the rule the rest of the game already follows: clear the tier
+ * and you keep everything, come up short and you grind up a 35 degree face having
+ * lost your flow. Same currency as water and as a bad landing.
+ */
+export interface Staircase extends FeatureBase {
+  kind: 'staircase';
+  tiers: number;
+  /** Height gained per tier. */
+  rise: number;
+  /** Front face of each tier. Steep, but wide enough for the mesh to draw. */
+  riserLength: number;
+  /** Flat run on each tier, before its kicker. */
+  platform: number;
+  /** Crest kicker at the end of each tier, and its back side. */
+  lipLength: number;
+  lipHeight: number;
+  back: number;
+  /** Void between one tier's kicker and the next tier's face. */
+  gap: number;
+  /**
+   * Half-width of the rideable stairway. `halfWidth` is the whole block; outside
+   * the stairway the surface is plain stepped terrace with no kickers or voids.
+   */
+  rampHalfWidth: number;
+  /** Flat platform on the top tier. */
+  summit: number;
+}
+
+export type Feature = Kicker | Tabletop | Rollers | Pond | Motte | Staircase;
 
 /**
  * Lip height that produces the requested launch angle. For h = H·tⁿ the lip slope
@@ -216,10 +278,74 @@ function smoothstep01(t: number): number {
 function motteHeight(f: Motte, r: number): number {
   if (r <= f.innerRadius) return f.height;
   if (r >= f.outerRadius) return 0;
-  const t = (f.outerRadius - r) / (f.outerRadius - f.innerRadius);
-  // Linear, so the flank has one constant slope to judge and traverse. An eased
-  // profile would make the middle half again as steep as the average.
-  return f.height * t;
+
+  const span = f.outerRadius - f.innerRadius;
+  const inward = f.outerRadius - r;
+  // Linear base, so the flank has one average slope to judge and traverse.
+  const cone = (f.height * inward) / span;
+
+  const steps = f.steps ?? 0;
+  if (steps <= 0) return cone;
+
+  // Amplitude chosen so the ripple's peak slope exactly equals the cone's: at
+  // strength 1 the treads come out flat and the banks come out twice as steep.
+  const wavelength = span / steps;
+  const grade = f.height / span;
+  const amp = ((grade * wavelength) / (2 * Math.PI)) * (f.stepStrength ?? 1);
+  return cone + amp * Math.sin((2 * Math.PI * inward) / wavelength);
+}
+
+/** One tier's worth of length, for every tier except the last. */
+function staircaseCell(f: Staircase): number {
+  return f.riserLength + f.platform + f.lipLength + f.back + f.gap;
+}
+
+/** The block's terrace level — no kickers, no voids. Everything off the stairway. */
+function staircaseBlock(f: Staircase, u: number): number {
+  if (u <= 0) return 0;
+  const cell = staircaseCell(f);
+  const i = Math.min(f.tiers - 1, Math.floor(u / cell));
+  const local = u - i * cell;
+  const tierY = i * f.rise;
+  const belowY = i === 0 ? 0 : (i - 1) * f.rise;
+  if (local < f.riserLength) {
+    return belowY + (tierY - belowY) * smoothstep01(local / f.riserLength);
+  }
+  return tierY;
+}
+
+/** Height above base along a staircase, at distance `u` from its origin. */
+function staircaseHeight(f: Staircase, u: number): number {
+  if (u <= 0) return 0;
+  const cell = staircaseCell(f);
+  const i = Math.min(f.tiers - 1, Math.floor(u / cell));
+  const local = u - i * cell;
+  const tierY = i * f.rise;
+  const belowY = i === 0 ? 0 : (i - 1) * f.rise;
+
+  if (local < f.riserLength) {
+    const t = local / f.riserLength;
+    return belowY + (tierY - belowY) * smoothstep01(t);
+  }
+  let o = f.riserLength;
+
+  // The top tier is a summit platform rather than another kicker.
+  if (i === f.tiers - 1) return tierY;
+
+  if (local < o + f.platform) return tierY;
+  o += f.platform;
+  if (local < o + f.lipLength) {
+    const t = (local - o) / f.lipLength;
+    return tierY + f.lipHeight * smoothstep01(t);
+  }
+  o += f.lipLength;
+  if (local < o + f.back) {
+    const t = (local - o) / f.back;
+    return tierY + f.lipHeight * (1 - smoothstep01(t));
+  }
+  // The void: still at this tier's height, so you fly over it and the next tier's
+  // face is what you have to clear.
+  return tierY;
 }
 
 /** Total distance a feature occupies past its origin. */
@@ -235,6 +361,8 @@ function featureLength(f: Feature): number {
       return f.length;
     case 'motte':
       return f.outerRadius + f.skirt;
+    case 'staircase':
+      return (f.tiers - 1) * staircaseCell(f) + f.riserLength + f.summit;
   }
 }
 
@@ -287,6 +415,10 @@ function profile(f: Feature, u: number, v: number): number {
     case 'motte':
       // Radial, so it never uses the corridor path; applyMotte handles it.
       return 0;
+
+    case 'staircase':
+      // The stairway only exists up the middle; the rest is terraced block.
+      return Math.abs(v) <= f.rampHalfWidth ? staircaseHeight(f, u) : staircaseBlock(f, u);
 
     case 'pond': {
       if (u >= f.length) return 0;
@@ -343,6 +475,8 @@ function tailFade(f: Feature): number {
       return f.length * 0.2;
     case 'motte':
       return END_FADE;
+    case 'staircase':
+      return END_FADE;
   }
 }
 
@@ -382,9 +516,19 @@ function applyMotte(hf: Heightfield, f: Motte) {
 
       const k = j * res + i;
       const target = base + h;
-      data[k] += (target - data[k]) * w;
+      // Mottes compose by *max*, not by replacement. Two overlapping cones then
+      // form one massif with a natural saddle between their peaks, which is the
+      // only way to get two summits close enough to jump between: a launch off one
+      // reaches barely past its own outer edge, nowhere near a separate mound.
+      // Replacement would have the second cone carve a bite out of the first.
+      if (w >= 1) {
+        if (target > data[k]) data[k] = target;
+      } else {
+        const blended = Math.max(data[k], target);
+        data[k] += (blended - data[k]) * w;
+      }
       // 2 = masonry, shaded as stone rather than as worked dirt.
-      if (w > 0.45) mark[k] = 2;
+      if (w > 0.45 && h > 0.5) mark[k] = 2;
     }
   }
 }
@@ -489,7 +633,7 @@ export function applyFeature(hf: Heightfield, f: Feature) {
       data[k] += (target - data[k]) * w;
       // Marked cells are shaded as groomed dirt, which is what makes a feature
       // visible against open desert before there are any props to signpost it.
-      if (w > 0.45) mark[k] = 1;
+      if (w > 0.45) mark[k] = f.surface === 'stone' ? 2 : 1;
     }
   }
 }

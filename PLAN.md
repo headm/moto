@@ -41,8 +41,7 @@ src/
     heightfield.ts        the terrain data model + h(x,z) and normal(x,z) sampling
     ramps.ts              ramp/kicker/gap definitions as height "stamps"
     park.ts               the feature layout and set-piece props, as plain data
-    props.ts              water surfaces, the burning loop, alligators
-    markers.ts            numbered flags, indices shared with `npm run sim`
+    props.ts              water, the burning loop, alligators, castle gatehouses
     terrainMesh.ts        heightfield → BufferGeometry with slope-based vertex colors
     scatter.ts            instanced rocks, shrubs, banners, markers
     sky.ts                gradient sky, fog, sun, hemisphere light
@@ -383,7 +382,32 @@ Four things this turned up, all of which change the sketch below:
    the hillside. That wants a wide summit (run-up) and a narrow flank (less to clear), and the crest
    placed at the *rim* — a launch from the summit centre still has the whole summit to cross before the
    flank even begins.
-11. **Launch angle sets the do-nothing landing.** There's no auto-level, so the bike leaves a lip
+11. **Landforms compose by max; corridors compose by replacement.** A second mound placed to overlap
+   the first would carve a bite out of it under replacement semantics. Taking the maximum instead makes
+   two cones merge into one massif with a natural saddle — which is the only way to get two summits
+   close enough to jump between, since a launch off a mound's rim reaches barely past its own outer
+   edge (79 m, against the 120+ m a separate mound would need).
+12. **A riser can never be a hard gate.** The bike climbs up to roughly 60 degrees, and anything above
+   45 cannot be drawn at this mesh resolution, so there is no such thing as an unclimbable face here.
+   Step-ups work as *momentum* gates instead — clear the tier and keep everything, come up short and
+   grind up a 35 degree face having lost your flow. That is the same currency water and bad landings
+   use, so it needs no new failure state.
+13. **A jumpable step-up sequence is inherently shallow.** Each tier needs horizontal run to be
+   jumped, and the height a single jump can gain is capped by what the suspension throws at the speed a
+   short platform allows — so the along-axis profile of a step-up monument cannot exceed roughly 10
+   degrees however the numbers are arranged. Monumentality has to come from the *cross-section*
+   instead: a wide stepped stone block with a narrow stairway cut up the middle reads as a monument
+   from the side while staying rideable along its length.
+14. **Terrace a slope with a sine, not with steps.** Making a flank jumpy wants treads and banks, but
+   hard steps on a steep flank put the riser inside a single mesh quad, where it draws as a row of
+   vertical fins. A sine superimposed on the cone, with amplitude set so its peak slope equals the
+   cone's own, flattens the treads and doubles the bank slope while staying everywhere smooth — same
+   terraced result, nothing undrawable, and the endpoints stay exactly where the cone put them.
+
+   The sizing rule that ruled out real step-up tiers is worth keeping: a tread must be ~10 m to land
+   on and a rise must be under ~5 m to be jumpable, so a stepped climb needs roughly 3 m of horizontal
+   run per metre of height. Anything steeper than that has to be banks-and-crests instead.
+15. **Launch angle sets the do-nothing landing.** There's no auto-level, so the bike leaves a lip
    holding the lip's pitch; on flat ground the resulting error *is* the launch angle. Angles at or
    under ~24 deg therefore land clean with no input, which correctly reserves the sketchy and bad
    bands for failed rotations rather than for ordinary jumping.

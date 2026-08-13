@@ -238,13 +238,48 @@ export const PARK: readonly Feature[] = [
     // the hillside, the launch has to clear the entire flank — so a wide summit
     // (run-up) and a narrow flank (less to clear) are both required. 68 m of
     // summit against 38 m of flank works; 40 against 52 did not.
-    outerRadius: 72,
+    // Widened from 72 so the flank has room to terrace. Real step-up tiers would
+    // need ~90 m of flank (10 m treads to land on, 5 m rises to jump) and that
+    // would swallow the far peak — so this is banks-and-crests instead: four
+    // near-flat treads separated by 44 degree banks, each cresting hard enough to
+    // throw the bike on the way up.
+    outerRadius: 100,
     innerRadius: 34,
-    height: 22,
+    height: 30,
+    steps: 4,
+    stepStrength: 1.15,
     turns: 2,
     // atan2 angle, not yaw: 0 puts the entry on the +X side, facing the park.
     entryAngle: 0,
     skirt: 14,
+  },
+  {
+    // The far peak. Lower than #9 (summit y=2 against y=8) so the crossing is
+    // slightly downhill and therefore landable, and close enough that the two
+    // bases merge into one massif with a saddle between them.
+    //
+    // They have to merge. A launch off #9's rim reaches barely past #9's own outer
+    // edge — 79 m of range against the 120+ m a separate mound would need — so
+    // "two towers with a chasm between" is not reachable at this bike's speeds.
+    // Overlapping cones composed by max are.
+    kind: 'motte',
+    name: 'the far peak',
+    x: -244,
+    z: -40,
+    yaw: PLUS_X,
+    baseY: -14,
+    halfWidth: 0,
+    approach: 0,
+    // Small and steep, deliberately. A's flank now reaches past here, so the far
+    // peak has to stand well above it to still read as a separate summit and to
+    // still be a target worth aiming at — a wide shallow cone would just be
+    // absorbed into A's shoulder.
+    outerRadius: 44,
+    innerRadius: 22,
+    height: 26,
+    turns: 2,
+    entryAngle: Math.PI,
+    skirt: 12,
   },
   {
     // On the summit, firing off the edge. Launching from 24 m up over ground that
@@ -268,7 +303,7 @@ export const PARK: readonly Feature[] = [
     // Fires away from the park, out over 260 m of open desert, so you are not
     // launching back over the ramp you just climbed.
     yaw: MINUS_X,
-    baseY: 8,
+    baseY: 16,
     halfWidth: 9,
     approach: 26,
     face: 'crest',
@@ -277,6 +312,58 @@ export const PARK: readonly Feature[] = [
     angleDeg: 0,
     back: 5,
     landing: 6,
+  },
+
+  // ---- #12/#13: the ziggurat -------------------------------------------------
+  {
+    // Five tiers, 5 m each, jumped one at a time to a summit 20 m up. The only
+    // structure here you gain height on by *jumping* rather than by climbing.
+    //
+    // Sited east of everything on the flattest 250 m corridor available (7.9 m of
+    // spread) and pinned to a datum, so the tiers are true rather than following
+    // the ground.
+    kind: 'staircase',
+    name: 'the ziggurat',
+    x: 185,
+    z: 150,
+    yaw: SOUTH,
+    // The whole block: 88 m wide, stepped and stone-shaded. The stairway is only
+    // 15 m of it, cut up the middle. This is where the monument read comes from —
+    // the along-axis profile can never be steep enough (see the type comment).
+    halfWidth: 44,
+    rampHalfWidth: 15,
+    baseY: -4,
+    approach: 40,
+    surface: 'stone',
+    tiers: 5,
+    rise: 6,
+    // 40 degrees: as steep as the mesh can draw. A riser cannot be a hard gate
+    // regardless — the bike climbs to ~60 — so it is a momentum gate, not a wall.
+    riserLength: 7,
+    platform: 12,
+    lipLength: 5,
+    lipHeight: 2.6,
+    back: 3,
+    gap: 7,
+    summit: 26,
+  },
+  {
+    // Off the top, 20 m up, with the whole flank falling away beneath.
+    kind: 'kicker',
+    name: 'the pinnacle',
+    x: 185,
+    z: 150 - (4 * (7 + 12 + 5 + 3 + 7) + 7 + 18),
+    yaw: SOUTH,
+    baseY: 20,
+    halfWidth: 9,
+    approach: 20,
+    face: 'crest',
+    length: 8,
+    height: 3,
+    angleDeg: 0,
+    back: 5,
+    landing: 6,
+    demandsBoost: true,
   },
 ];
 
@@ -298,18 +385,39 @@ export const SETPIECE = {
   // comfortably inside the ring — and then lands in the water.
   loop: { x: 0, y: 11.2, z: -150, yaw: SOUTH, radius: 7.5, tube: 0.55 },
   gatorCount: 6,
-  motte: {
+  mottes: [
+  {
     x: -150,
     z: -40,
     baseY: -14,
-    summitY: 8,
-    outerRadius: 72,
+    summitY: 16,
+    outerRadius: 100,
     innerRadius: 34,
-    height: 22,
+    height: 30,
     turns: 2,
     entryAngle: 0,
-    // Off to one side of the summit, so the launch run down the middle stays clear.
-    keep: { x: -150, z: -14, size: 13, height: 15 },
-    bannerCount: 7,
+    // A gatehouse straddling the launch run rather than a keep beside it: you ride
+    // through the arch and off the rim beyond. Decoration, like the fire ring, so
+    // the arch has to *line up* with the ride line to read correctly — it is at
+    // z=-40 because that is where the run is.
+    gate: { x: -168, z: -40, archWidth: 15, wallHeight: 11, towerHeight: 18, spanZ: 34 },
   },
+  {
+    // The far peak gets a smaller gatehouse, so the two summits read as different
+    // places rather than as the same asset twice.
+    x: -244,
+    z: -40,
+    baseY: -14,
+    summitY: 12,
+    outerRadius: 44,
+    innerRadius: 22,
+    height: 26,
+    turns: 2,
+    entryAngle: Math.PI,
+    // A gatehouse across this summit's ride line too — you land off the gap jump
+    // heading -X and pass straight through it. Slightly smaller than #9's, so the
+    // two peaks still read as major and minor.
+    gate: { x: -246, z: -40, archWidth: 13, wallHeight: 9, towerHeight: 13, spanZ: 26 },
+  },
+  ],
 };

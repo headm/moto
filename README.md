@@ -60,9 +60,9 @@ Riding works, landings are rated, and there are ramps. Terrain, suspension, stee
 rotation, jump, boost, landing feedback, the chase camera and a first set of features are in. There
 are no tricks and no scoring yet — that's M4.
 
-Features are numbered, with a flag on a pole at the mouth of each approach. The same numbers print in
-`npm run sim`, so a feature can be named the same way in the world, in the harness and in
-conversation.
+Features are numbered in this table and in `npm run sim`, so a feature can be named the same way in the
+harness and in conversation. The numbers are not signposted in the world — flags on poles at every
+approach turned out to be more clutter than help.
 
 | # | Feature | Lip | Pop at 25 m/s | Susp. used | Air (base / boosted) |
 |---|---|---|---|---|---|
@@ -74,21 +74,63 @@ conversation.
 | 6 | side hip | 2.4 m | 30 m/s² | 0.25 m | 1.36 / 1.55 s |
 | 7 | the gauntlet | 5.6 m | **328 m/s²** | 0.40 m | 2.87 / **3.13 s, 25 m up** |
 | 8 | gator pond | — | — | — | the bit you'd rather clear |
-| 9 | the motte | 22 m tall | — | — | ride up it |
-| 10 | the drop | 3.4 m | — | 0.40 m | boosted: **3.02 s, 22.6 m clearance** |
+| 9 | the motte | 30 m tall | — | — | **5 hops riding up it** |
+| 10 | the far peak | 26 m tall | — | — | the target |
+| 11 | the drop | 3.4 m | — | 0.40 m | boosted: **peak to peak** |
+| 12 | the ziggurat | 5 tiers, 20 m | — | — | jump *up* it |
+| 13 | the pinnacle | 3.0 m | — | — | off the top, 20 m up |
 
-**#9/#10 is the castle.** A stone mound 22 m high and 144 m across with a keep on the summit, banners
-marking the fast line up, and a launch off the rim. Boosted, the launch clears the entire mound and
-lands on the desert 79 m out; unboosted you come up short and land badly on the flank — the same
-bargain the gator pond offers.
+**#9/#10 is the castle.** Two stone mounds, 30 m and 26 m high, each with a **gatehouse straddling its
+ride line** — twin spired towers, a lintel with battlements, a portcullis hanging in the arch — so you
+ride *through* the gate and off the rim beyond. Stand on the first summit and you can see the second
+gate framed inside the first arch.
 
-Its surface is a **cone you traverse**, not a spiral ramp, and that is forced rather than chosen. A
-heightfield stores one height per point, so the surface cannot gain height around a closed loop: ride a
-terrace at constant radius through a full revolution and you return to the same point, which must be
-the same height. Built as a helicoid it became concentric terraces separated by risers the bike fell
-off — it orbited forever without ever summiting. Along a real spiral's centre-line the height depends
-only on radius, which *is* a cone. So the cone is the honest form, and the spiral is a line across it
-marked by banners rather than geometry.
+Like the fire ring, the gates are decoration with nothing to collide with, which means the arch only
+reads correctly if it is centred on where the bike actually goes. Both are placed on their motte's
+ride line for exactly that reason.
+
+**#9 to #10 is a gap jump between summits.** Boosted, the launch off #9's rim carries you across the
+saddle onto the far peak, 28 m from its centre. Unboosted you come up short and land on the flank in
+between. The two peaks *have* to share a massif — a launch off #9 reaches barely past #9's own outer
+edge, 79 m against the 120+ m a separate mound would need — so mottes compose by **max** rather than by
+replacement, and two overlapping cones make one massif with a saddle.
+
+**#9's flank is terraced into four banks**, so riding up it is a sequence of jumps rather than a grind:
+near-flat treads separated by 44° banks, each cresting hard enough to throw the bike. Straight up the
+face that is 5 hops, the longest 0.94 s, 3.5 s airborne in total, summiting in about 6 seconds. The
+banks land *sketchy* if you don't tuck the nose, so each one costs 20% of your speed — the climb is a
+landing drill, not a ramp.
+
+Real step-up tiers were the first attempt and don't fit: a tread has to be ~10 m to land on and a rise
+≤5 m to be jumpable, which needs a 90 m flank, and widening #9 that far absorbs the far peak entirely.
+The terracing is a *sine* superimposed on the cone instead — amplitude set so its peak slope equals the
+cone's, which flattens the treads and doubles the bank slope while staying smooth. Hard steps at this
+scale would put risers inside a single mesh quad and draw as vertical fins.
+
+Widening #9 to 100 m did mean shrinking #10 into a small steep tor (44 m radius, 26 m tall) so it still
+stands clear of #9's flank and remains a target worth aiming at.
+
+The mounds' surface is otherwise a **cone you traverse**, not a spiral ramp, and that is forced rather
+than chosen. A heightfield stores one height per point, so the surface cannot gain height around a closed
+loop: ride a terrace at constant radius through a full revolution and you return to the same point,
+which must be the same height. Built as a helicoid it became concentric terraces separated by risers
+the bike fell off — it orbited forever without ever summiting. Along a real spiral's centre-line the
+height depends only on radius, which *is* a cone. So a cone is the honest form: take whatever line up
+it you like, and traversing keeps more speed than charging straight up.
+
+**#12 the ziggurat** is five 6 m tiers you gain height on by *jumping*, not climbing: platform, crest
+kicker, void, then the next tier's face 6 m higher, to a summit 20 m up with a launch off the top.
+
+The rideable stairway is unavoidably shallow — each tier needs horizontal run to be jumpable, and the
+height one jump can gain is capped by what the suspension throws at the speed a short platform allows,
+so the along-axis profile can never exceed about 10°. The monument read therefore comes from the
+**cross-section**: the block is 88 m wide, stepped and stone-shaded, with the 30 m stairway cut up the
+middle of it. From the side it is a terraced platform; ridden, it is a stairway.
+
+Note what a riser can and cannot be. The bike climbs anything up to roughly 60°, and a face steeper
+than about 45° cannot be drawn at this mesh resolution — so a riser is never a hard gate. It is a
+**momentum** gate: clear the tier and you keep everything, come up short and you grind up a 35° face
+having lost your flow. Same currency as water and as a bad landing.
 
 **#7 is the set piece**, and it continues the run: spawn, ride #1–#4, then straight into it. 3.12 s of
 air boosted, through a burning loop 20 m up on ten-metre legs, over a pond with alligators in it.

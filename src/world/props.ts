@@ -1,5 +1,5 @@
-import * as THREE from 'three';
-import type { Heightfield } from './heightfield';
+import * as THREE from "three";
+import type { Heightfield } from "./heightfield";
 
 /**
  * Set-piece props: water surfaces, a burning loop to fly through, and the
@@ -35,14 +35,27 @@ export interface MotteSpec {
   height: number;
   turns: number;
   entryAngle: number;
-  keep: { x: number; z: number; size: number; height: number };
-  bannerCount: number;
+  /**
+   * A gatehouse *across* the ride line, with an arch you pass through.
+   *
+   * Decoration like the fire ring — there is nothing to collide with — so the arch
+   * only reads correctly if it is centred on where the bike actually goes.
+   */
+  gate?: {
+    x: number;
+    z: number;
+    archWidth: number;
+    wallHeight: number;
+    towerHeight: number;
+    /** Total span of the wall across the ride line. */
+    spanZ: number;
+  };
 }
 
 export interface SetPieceSpec {
   loop: LoopSpec;
   gatorCount: number;
-  motte: MotteSpec;
+  mottes: MotteSpec[];
 }
 
 interface Gator {
@@ -62,7 +75,7 @@ export interface Props {
   dispose(): void;
 }
 
-const WATER = new THREE.Color('#2f6b63');
+const WATER = new THREE.Color("#2f6b63");
 
 export function createProps(hf: Heightfield, spec: SetPieceSpec): Props {
   const group = new THREE.Group();
@@ -89,7 +102,9 @@ export function createProps(hf: Heightfield, spec: SetPieceSpec): Props {
   );
   const waterPlanes: { mesh: THREE.Mesh; level: number }[] = [];
   for (const w of hf.waters) {
-    const geometry = track(new THREE.PlaneGeometry(w.halfWidth * 2, w.halfLength * 2, 1, 1));
+    const geometry = track(
+      new THREE.PlaneGeometry(w.halfWidth * 2, w.halfLength * 2, 1, 1),
+    );
     geometry.rotateX(-Math.PI / 2);
     const mesh = new THREE.Mesh(geometry, waterMaterial);
     mesh.position.set(w.x, w.level, w.z);
@@ -119,7 +134,7 @@ export function createProps(hf: Heightfield, spec: SetPieceSpec): Props {
     track(new THREE.TorusGeometry(loop.radius, loop.tube * 3.4, 8, 26)),
     mat(
       new THREE.MeshBasicMaterial({
-        color: new THREE.Color('#ff6a12'),
+        color: new THREE.Color("#ff6a12"),
         transparent: true,
         opacity: 0.34,
         blending: THREE.AdditiveBlending,
@@ -134,7 +149,7 @@ export function createProps(hf: Heightfield, spec: SetPieceSpec): Props {
     track(new THREE.TorusGeometry(loop.radius, loop.tube * 1.8, 8, 26)),
     mat(
       new THREE.MeshBasicMaterial({
-        color: new THREE.Color('#ffd08a'),
+        color: new THREE.Color("#ffd08a"),
         transparent: true,
         opacity: 0.55,
         blending: THREE.AdditiveBlending,
@@ -150,7 +165,9 @@ export function createProps(hf: Heightfield, spec: SetPieceSpec): Props {
 
   // Legs down to whatever is under the ring — without them a flaming hoop hangs
   // in mid-air with nothing holding it up.
-  const legMaterial = mat(new THREE.MeshLambertMaterial({ color: 0x3a3d43, flatShading: true }));
+  const legMaterial = mat(
+    new THREE.MeshLambertMaterial({ color: 0x3a3d43, flatShading: true }),
+  );
   for (const side of [-1, 1]) {
     const footX = loop.x + Math.cos(loop.yaw) * -side * loop.radius * 0.82;
     const footZ = loop.z + Math.sin(loop.yaw) * side * loop.radius * 0.82;
@@ -167,9 +184,15 @@ export function createProps(hf: Heightfield, spec: SetPieceSpec): Props {
   }
 
   // ---- alligators ----------------------------------------------------------
-  const gatorBody = mat(new THREE.MeshLambertMaterial({ color: 0x3f5b34, flatShading: true }));
-  const gatorBelly = mat(new THREE.MeshLambertMaterial({ color: 0x6d7a45, flatShading: true }));
-  const gatorEye = mat(new THREE.MeshLambertMaterial({ color: 0xf2e6c2, flatShading: true }));
+  const gatorBody = mat(
+    new THREE.MeshLambertMaterial({ color: 0x3f5b34, flatShading: true }),
+  );
+  const gatorBelly = mat(
+    new THREE.MeshLambertMaterial({ color: 0x6d7a45, flatShading: true }),
+  );
+  const gatorEye = mat(
+    new THREE.MeshLambertMaterial({ color: 0xf2e6c2, flatShading: true }),
+  );
 
   const bodyGeo = track(new THREE.BoxGeometry(0.95, 0.42, 3.1));
   const snoutGeo = track(new THREE.BoxGeometry(0.62, 0.3, 1.25));
@@ -189,7 +212,10 @@ export function createProps(hf: Heightfield, spec: SetPieceSpec): Props {
     snout.position.set(0, -0.04, 2.1);
     g.add(snout);
 
-    const jaw = new THREE.Mesh(track(new THREE.BoxGeometry(0.5, 0.1, 1.05)), gatorBelly);
+    const jaw = new THREE.Mesh(
+      track(new THREE.BoxGeometry(0.5, 0.1, 1.05)),
+      gatorBelly,
+    );
     jaw.position.set(0, -0.16, 2.15);
     g.add(jaw);
 
@@ -241,98 +267,118 @@ export function createProps(hf: Heightfield, spec: SetPieceSpec): Props {
     }
   }
 
-  // ---- the motte's keep and banners ---------------------------------------
-  // Decoration, like the loop: the heightfield carries the rideable surface, and
-  // these carry the read. A stone keep and a line of banners are what make a
-  // stepped mound legible as a castle rather than as a quarry.
-  const banners: THREE.Mesh[] = [];
-  {
-    const mo = spec.motte;
-    const stone = mat(new THREE.MeshLambertMaterial({ color: 0x9a9384, flatShading: true }));
-    const stoneDark = mat(new THREE.MeshLambertMaterial({ color: 0x6b665c, flatShading: true }));
-    const roof = mat(new THREE.MeshLambertMaterial({ color: 0x5b4a5e, flatShading: true }));
-    const cloth = mat(new THREE.MeshLambertMaterial({ color: 0xb2402f, flatShading: true }));
-    const pole = mat(new THREE.MeshLambertMaterial({ color: 0x6d5a42, flatShading: true }));
+  // ---- the mottes' gatehouses ---------------------------------------------
+  // Decoration, like the loop: the heightfield carries the rideable surface and
+  // these carry the read. Each gate straddles its motte's ride line, so the arch
+  // has to be centred on where the bike actually goes.
+  for (const mo of spec.mottes) {
+    const stone = mat(
+      new THREE.MeshLambertMaterial({ color: 0x9a9384, flatShading: true }),
+    );
+    const stoneDark = mat(
+      new THREE.MeshLambertMaterial({ color: 0x6b665c, flatShading: true }),
+    );
+    const roof = mat(
+      new THREE.MeshLambertMaterial({ color: 0x5b4a5e, flatShading: true }),
+    );
 
-    const k = mo.keep;
-    const keepGroup = new THREE.Group();
-    keepGroup.position.set(k.x, mo.summitY, k.z);
-    group.add(keepGroup);
+    // ---- gatehouse across the ride line ----------------------------------
+    if (mo.gate) {
+      const g = mo.gate;
+      const gate = new THREE.Group();
+      gate.position.set(g.x, mo.summitY, g.z);
+      group.add(gate);
 
-    const body = new THREE.Mesh(track(new THREE.BoxGeometry(k.size, k.height, k.size)), stone);
-    body.position.y = k.height / 2;
-    body.castShadow = true;
-    body.receiveShadow = true;
-    keepGroup.add(body);
+      const half = g.spanZ / 2;
+      const openHalf = g.archWidth / 2;
+      const towerR = 4;
 
-    // Crenellations: merlons round the parapet, with the gaps between them doing
-    // as much work as the blocks.
-    const merlonGeo = track(new THREE.BoxGeometry(1.5, 1.6, 1.2));
-    const perSide = 4;
-    for (let side = 0; side < 4; side++) {
-      for (let n = 0; n < perSide; n++) {
-        const f = (n + 0.5) / perSide - 0.5;
-        const along = f * (k.size - 1.5);
-        const out = k.size / 2 - 0.6;
-        const m = new THREE.Mesh(merlonGeo, stone);
-        if (side === 0) m.position.set(along, k.height + 0.8, out);
-        else if (side === 1) m.position.set(along, k.height + 0.8, -out);
-        else if (side === 2) m.position.set(out, k.height + 0.8, along);
-        else m.position.set(-out, k.height + 0.8, along);
-        if (side >= 2) m.rotation.y = Math.PI / 2;
-        m.castShadow = true;
-        keepGroup.add(m);
-      }
-    }
-
-    // Corner turrets, each capped with a spire.
-    const turretGeo = track(new THREE.CylinderGeometry(2.1, 2.4, k.height + 4, 7));
-    const spireGeo = track(new THREE.ConeGeometry(2.6, 4.4, 7));
-    for (const sx of [-1, 1]) {
-      for (const sz of [-1, 1]) {
-        const cx = (sx * k.size) / 2;
-        const cz = (sz * k.size) / 2;
-        const t = new THREE.Mesh(turretGeo, stoneDark);
-        t.position.set(cx, (k.height + 4) / 2, cz);
+      // Flanking towers, set at the edges of the opening.
+      const towerGeo = track(
+        new THREE.CylinderGeometry(towerR, towerR + 0.6, g.towerHeight, 8),
+      );
+      const spireGeo = track(new THREE.ConeGeometry(towerR + 0.9, 6, 8));
+      for (const side of [-1, 1]) {
+        const cz = side * (openHalf + towerR);
+        const t = new THREE.Mesh(towerGeo, stone);
+        t.position.set(0, g.towerHeight / 2, cz);
         t.castShadow = true;
-        keepGroup.add(t);
+        gate.add(t);
         const sp = new THREE.Mesh(spireGeo, roof);
-        sp.position.set(cx, k.height + 4 + 2.2, cz);
+        sp.position.set(0, g.towerHeight + 3, cz);
         sp.castShadow = true;
-        keepGroup.add(sp);
+        gate.add(sp);
+
+        // Curtain wall running outward from each tower to the span limit.
+        const wallLen = Math.max(1, half - (openHalf + towerR * 2));
+        if (wallLen > 1) {
+          const wall = new THREE.Mesh(
+            track(new THREE.BoxGeometry(3.2, g.wallHeight, wallLen)),
+            stone,
+          );
+          wall.position.set(
+            0,
+            g.wallHeight / 2,
+            side * (openHalf + towerR * 2 + wallLen / 2),
+          );
+          wall.castShadow = true;
+          wall.receiveShadow = true;
+          gate.add(wall);
+
+          // Merlons along the curtain.
+          const count = Math.max(2, Math.floor(wallLen / 3));
+          for (let n = 0; n < count; n++) {
+            const f = (n + 0.5) / count - 0.5;
+            const m = new THREE.Mesh(
+              track(new THREE.BoxGeometry(3.4, 1.6, 1.3)),
+              stone,
+            );
+            m.position.set(
+              0,
+              g.wallHeight + 0.8,
+              side * (openHalf + towerR * 2 + wallLen / 2) + f * wallLen,
+            );
+            m.castShadow = true;
+            gate.add(m);
+          }
+        }
+      }
+
+      // The lintel over the opening — this is what makes it an arch rather than a
+      // gap between two towers.
+      const lintel = new THREE.Mesh(
+        track(new THREE.BoxGeometry(3.6, 3.4, g.archWidth + towerR)),
+        stone,
+      );
+      lintel.position.set(0, g.wallHeight + 1.7, 0);
+      lintel.castShadow = true;
+      gate.add(lintel);
+
+      // Battlement over the gateway, and a portcullis grille hanging in the arch.
+      for (let n = 0; n < 5; n++) {
+        const f = (n + 0.5) / 5 - 0.5;
+        const m = new THREE.Mesh(
+          track(new THREE.BoxGeometry(3.8, 1.7, 1.4)),
+          stone,
+        );
+        m.position.set(0, g.wallHeight + 4.2, f * (g.archWidth + towerR));
+        m.castShadow = true;
+        gate.add(m);
+      }
+      for (let n = 0; n < 6; n++) {
+        const bar = new THREE.Mesh(
+          track(new THREE.BoxGeometry(0.3, 2.4, 0.3)),
+          stoneDark,
+        );
+        bar.position.set(
+          0,
+          g.wallHeight - 1.2,
+          -openHalf + 1 + n * ((g.archWidth - 2) / 5),
+        );
+        gate.add(bar);
       }
     }
 
-    // A dark doorway, so the keep reads as a building and not a block.
-    const door = new THREE.Mesh(track(new THREE.BoxGeometry(2.6, 4, 0.5)), stoneDark);
-    door.position.set(0, 2, k.size / 2 + 0.1);
-    keepGroup.add(door);
-
-    // Banners along the outer shoulder of the spiral, marking the route up.
-    const TAU2 = Math.PI * 2;
-    const poleGeo = track(new THREE.CylinderGeometry(0.14, 0.16, 7, 5));
-    poleGeo.translate(0, 3.5, 0);
-    const flagGeo = track(new THREE.BoxGeometry(0.12, 2.1, 3.2));
-    const total = mo.turns * TAU2;
-    const treadWidth = (mo.outerRadius - mo.innerRadius) / mo.turns;
-    for (let n = 0; n < mo.bannerCount; n++) {
-      const th = ((n + 0.5) / mo.bannerCount) * total;
-      const rs = mo.outerRadius - (mo.outerRadius - mo.innerRadius) * (th / total);
-      const r = rs + treadWidth * 0.42; // outer shoulder, clear of the ride line
-      const a = mo.entryAngle + th;
-      const x = mo.x + Math.cos(a) * r;
-      const z = mo.z + Math.sin(a) * r;
-      const y = hf.height(x, z);
-      const pl = new THREE.Mesh(poleGeo, pole);
-      pl.position.set(x, y, z);
-      pl.castShadow = true;
-      group.add(pl);
-      const fl = new THREE.Mesh(flagGeo, cloth);
-      fl.position.set(x, y + 5.6, z + 1.7);
-      fl.rotation.y = a;
-      banners.push(fl);
-      group.add(fl);
-    }
   }
 
   let clock = 0;
@@ -343,22 +389,19 @@ export function createProps(hf: Heightfield, spec: SetPieceSpec): Props {
       clock += dt;
 
       // Two incommensurate sines again: cheap, and no two frames look alike.
-      const flicker = 0.72 + 0.28 * Math.sin(clock * 11.3) * Math.sin(clock * 7.1 + 0.7);
+      const flicker =
+        0.72 + 0.28 * Math.sin(clock * 11.3) * Math.sin(clock * 7.1 + 0.7);
       flameOuter.scale.setScalar(0.97 + 0.06 * flicker);
       flameInner.scale.setScalar(0.99 + 0.03 * flicker);
-      (flameOuter.material as THREE.MeshBasicMaterial).opacity = 0.22 + 0.2 * flicker;
-      (flameInner.material as THREE.MeshBasicMaterial).opacity = 0.4 + 0.25 * flicker;
+      (flameOuter.material as THREE.MeshBasicMaterial).opacity =
+        0.22 + 0.2 * flicker;
+      (flameInner.material as THREE.MeshBasicMaterial).opacity =
+        0.4 + 0.25 * flicker;
       loopLight.intensity = 18 + 14 * flicker;
 
       // Surface breathes a few centimetres so the water isn't a dead flat slab.
       for (const w of waterPlanes) {
         w.mesh.position.y = w.level + Math.sin(clock * 0.85) * 0.05;
-      }
-
-      // Banners stir, which is most of what makes them read as cloth.
-      for (let n = 0; n < banners.length; n++) {
-        banners[n].rotation.z = Math.sin(clock * 1.9 + n * 0.7) * 0.09;
-        banners[n].scale.z = 1 + Math.sin(clock * 2.6 + n) * 0.07;
       }
 
       for (const g of gators) {
@@ -369,7 +412,11 @@ export function createProps(hf: Heightfield, spec: SetPieceSpec): Props {
         // same convention the bike uses.
         const dx = -Math.sin(t) * g.rx;
         const dz = Math.cos(t) * g.rz;
-        g.group.position.set(x, g.level - 0.14 + Math.sin(clock * 1.4 + g.phase) * 0.045, z);
+        g.group.position.set(
+          x,
+          g.level - 0.14 + Math.sin(clock * 1.4 + g.phase) * 0.045,
+          z,
+        );
         g.group.rotation.y = Math.atan2(dx, dz);
         g.group.rotation.z = Math.sin(clock * 1.1 + g.phase) * 0.05;
       }

@@ -8,7 +8,6 @@ import { createSky, updateSky, applyLighting } from './world/sky';
 import { applyPark } from './world/ramps';
 import { PARK, SETPIECE } from './world/park';
 import { createProps, type Props } from './world/props';
-import { createFeatureMarkers, type Markers } from './world/markers';
 import { createBikeState, resetBike, groundSpeed } from './bike/state';
 import { stepBike } from './bike/physics';
 import { createBikeModel, syncBikeModel, lerpAngle } from './bike/model';
@@ -55,10 +54,6 @@ scene.add(terrain.mesh);
 let props: Props = createProps(hf, SETPIECE);
 scene.add(props.group);
 
-let markers: Markers = createFeatureMarkers(hf, PARK);
-markers.group.visible = T.render.showMarkers;
-scene.add(markers.group);
-
 const bike = createBikeState();
 resetBike(bike, hf);
 
@@ -82,7 +77,6 @@ function applyRender() {
   terrain.mesh.castShadow = T.render.terrainShadows;
   terrain.material.wireframe = T.render.wireframe;
   (scene.fog as THREE.FogExp2).density = T.render.fogDensity;
-  markers.group.visible = T.render.showMarkers;
   renderer.toneMappingExposure = T.light.exposure;
   applyLighting(sky);
 }
@@ -98,11 +92,6 @@ function regenerateWorld() {
   props.dispose();
   props = createProps(hf, SETPIECE);
   scene.add(props.group);
-
-  scene.remove(markers.group);
-  markers.dispose();
-  markers = createFeatureMarkers(hf, PARK);
-  scene.add(markers.group);
   applyRender();
   respawn();
 }

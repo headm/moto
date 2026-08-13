@@ -875,11 +875,104 @@ console.log(
     return { air, peak, r: 0 };
   })();
 
+  // Peak to peak. The far summit is the target; the saddle between is what you get
+  // for coming up short.
+  const farPeak = PARK.find((f) => f.name === 'the far peak')!;
+  if (farPeak.kind !== 'motte') throw new Error('the far peak changed kind');
+  const crossing = (boost: boolean) => {
+    const s = createBikeState();
+    resetBike(s, parkField);
+    const fx = Math.sin(drop.yaw);
+    const fz = Math.cos(drop.yaw);
+    const u = -(drop.approach - 3);
+    s.pos.set(drop.x + fx * u, 0, drop.z + fz * u);
+    s.pos.y = parkField.height(s.pos.x, s.pos.z) + T.susp.restHeight;
+    s.yaw = drop.yaw;
+    s.vel.set(fx * 16, 0, fz * 16);
+    if (boost) s.boostRemaining = T.boost.duration;
+    const input = idle();
+    input.throttle = 1;
+    let seen = false;
+    for (let i = 0; i < 2400; i++) {
+      const wasGrounded = s.grounded;
+      stepBike(s, parkField, input, STEP);
+      if (!finite(s)) break;
+      const uu = (s.pos.x - drop.x) * fx + (s.pos.z - drop.z) * fz;
+      if (wasGrounded && !s.grounded && !seen && uu > 0) seen = true;
+      if (seen && !wasGrounded && s.grounded) {
+        return { r: Math.hypot(s.pos.x - farPeak.x, s.pos.z - farPeak.z), y: s.pos.y };
+      }
+    }
+    return { r: Infinity, y: 0 };
+  };
+  const far = crossing(true);
+  const short = crossing(false);
+  const summitY = farPeak.baseY! + farPeak.height;
   check(
-    'boosted, the summit launch clears the mound',
-    launched.r > motte.outerRadius,
+    'boosted, the gap jump makes the far summit',
+    far.r <= farPeak.innerRadius + 2 && far.y > summitY - 1.5,
+    `landed ${far.r.toFixed(0)} m from its centre (summit is ${farPeak.innerRadius} m), y=${far.y.toFixed(1)} vs summit ${summitY}`,
+  );
+  check(
+    'unboosted, the gap jump comes up short',
+    short.y < summitY - 1.5,
+    `landed short on the flank at y=${short.y.toFixed(1)}`,
+  );
+
+  // The rim, not the outer radius. A terraced flank is 100 m wide and the launch
+  // is not meant to clear all of it any more — the far peak is the target, which
+  // the check above measures. What still matters here is that the launch actually
+  // leaves the summit rather than dribbling off the edge.
+  check(
+    'boosted, the summit launch clears the rim',
+    launched.r > motte.innerRadius + 20 && launched.peak > 10,
     `${launched.air.toFixed(2)} s air, ${launched.peak.toFixed(1)} m clearance, ` +
-      `landed ${launched.r.toFixed(0)} m out of a ${motte.outerRadius} m mound`,
+      `${launched.r.toFixed(0)} m out from a ${motte.innerRadius} m rim`,
+  );
+  console.log('');
+}
+
+// --- 11. the ziggurat ------------------------------------------------------
+{
+  const parkField = new Heightfield(T.world);
+  applyPark(parkField, PARK);
+
+  const zig = PARK.find((f) => f.name === 'the ziggurat')!;
+  if (zig.kind !== 'staircase') throw new Error('the ziggurat changed kind');
+  const summitY = zig.baseY! + (zig.tiers - 1) * zig.rise;
+
+  const s = createBikeState();
+  resetBike(s, parkField);
+  s.pos.set(zig.x, 0, zig.z + 30);
+  s.pos.y = parkField.height(s.pos.x, s.pos.z) + T.susp.restHeight;
+  s.yaw = zig.yaw;
+  s.vel.set(0, 0, -20);
+  const input = idle();
+  input.throttle = 1;
+
+  let reached = -1e9;
+  let tiersCleared = 0;
+  let nextTier = 1;
+  for (let i = 0; i < 120 * 60; i++) {
+    // Boost whenever it is available, as a player working up the tiers would.
+    if (s.grounded && s.boostRemaining <= 0 && s.boostCooldown <= 0) {
+      s.boostRemaining = T.boost.duration;
+    }
+    stepBike(s, parkField, input, STEP);
+    if (!finite(s)) break;
+    reached = Math.max(reached, s.pos.y);
+    // Count a tier once the bike is standing on it.
+    if (s.grounded && nextTier < zig.tiers && s.pos.y > zig.baseY! + nextTier * zig.rise - 1) {
+      tiersCleared = nextTier;
+      nextTier++;
+    }
+    if (s.pos.z < zig.z - 300) break;
+  }
+
+  check(
+    'the ziggurat can be jumped up',
+    tiersCleared >= zig.tiers - 1,
+    `${tiersCleared} of ${zig.tiers - 1} steps cleared, reached y=${reached.toFixed(1)} (summit ${summitY})`,
   );
   console.log('');
 }

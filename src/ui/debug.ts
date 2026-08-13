@@ -138,7 +138,6 @@ export function buildGui(cb: DebugCallbacks): GUI {
   const render = gui.addFolder('Render').close();
   render.add(T.render, 'terrainShadows').onChange(cb.applyRender);
   render.add(T.render, 'wireframe').onChange(cb.applyRender);
-  render.add(T.render, 'showMarkers').name('feature numbers').onChange(cb.applyRender);
   render.add(T.render, 'fogDensity', 0, 0.01, 0.0001).onChange(cb.applyRender);
 
   const presets = gui.addFolder('Presets').close();
