@@ -9,6 +9,7 @@ import { applyThemeTunables } from './world/themes';
 import { applyPark } from './world/ramps';
 import { PARK, SETPIECE } from './world/park';
 import { createProps, type Props } from './world/props';
+import { createScatter, type Scatter } from './world/scatter';
 import { createBikeState, resetBike, groundSpeed } from './bike/state';
 import { stepBike } from './bike/physics';
 import { createBikeModel, syncBikeModel, lerpAngle } from './bike/model';
@@ -58,6 +59,11 @@ scene.add(terrain.mesh);
 let props: Props = createProps(hf, SETPIECE);
 scene.add(props.group);
 
+// Rebuilt alongside the terrain mesh: both bake the theme's colours in, and the
+// scatter also has to follow a regenerated heightfield.
+let scatter: Scatter = createScatter(hf);
+scene.add(scatter.group);
+
 const bike = createBikeState();
 resetBike(bike, hf);
 
@@ -82,6 +88,7 @@ const hud = new Hud();
 input.onAnyKey = () => hud.fadeHint();
 
 function applyRender() {
+  scatter.group.visible = T.scatter.on;
   terrain.mesh.castShadow = T.render.terrainShadows;
   terrain.material.wireframe = T.render.wireframe;
   (scene.fog as THREE.FogExp2).density = T.render.fogDensity;
@@ -94,6 +101,12 @@ function rebuildTerrainMesh() {
   terrain.dispose();
   terrain = buildTerrainMesh(hf, T.world.meshStride);
   scene.add(terrain.mesh);
+
+  scene.remove(scatter.group);
+  scatter.dispose();
+  scatter = createScatter(hf);
+  scatter.group.visible = T.scatter.on;
+  scene.add(scatter.group);
 }
 
 function regenerateWorld() {

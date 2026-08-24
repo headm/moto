@@ -45,6 +45,19 @@ const cB = new THREE.Vector3();
 const nrm = new THREE.Vector3();
 const col = new THREE.Color();
 
+/**
+ * The scrub field: broad regions of vegetation broken up by finer patches.
+ *
+ * Exported because `scatter.ts` places its shrubs from *this* field rather than
+ * one of its own — bushes have to grow where the ground is already tinted for
+ * them, or the colour and the objects read as two systems that have never met.
+ */
+export function scrubAt(x: number, z: number, seed: number): number {
+  const broad = sampleNoise(x / 210, z / 210, seed + 11);
+  const fine = sampleNoise(x / 46, z / 46, seed + 12);
+  return smoothstep(0.5, 0.85, broad * 0.65 + fine * 0.35);
+}
+
 /** Cheap deterministic jitter so large flats aren't perfectly uniform. */
 function triJitter(i: number, j: number): number {
   let h = Math.imul(i, 668265263) ^ Math.imul(j, 374761393);
@@ -132,9 +145,7 @@ export function buildTerrainMesh(hf: Heightfield, stride: number): Terrain {
     // Two noise scales: broad regions of vegetation, broken up by finer patches.
     const cx = (x0 + x1 + x2) / 3;
     const cz = (z0 + z1 + z2) / 3;
-    const broad = sampleNoise(cx / 210, cz / 210, hf.seed + 11);
-    const fine = sampleNoise(cx / 46, cz / 46, hf.seed + 12);
-    const scrub = smoothstep(0.5, 0.85, broad * 0.65 + fine * 0.35);
+    const scrub = scrubAt(cx, cz, hf.seed);
 
     shadeTriangle(Math.abs(nrm.y), scrub, jitter, groomed, stone, col);
 

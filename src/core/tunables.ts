@@ -329,6 +329,31 @@ export const DEFAULTS = {
     minClearance: 1.6,
   },
 
+  /**
+   * Instanced rocks and shrubs. Two draw calls of parallax, which is the only
+   * thing that tells 40 km/h from 80 out of the corner of the eye on ground with
+   * no texture on it.
+   */
+  scatter: {
+    on: true,
+    /** Candidate lattice spacing, m, and how far from the origin it runs. */
+    spacing: 9,
+    reach: 400,
+    /** Fraction of eligible cells that get something. */
+    rockChance: 0.45,
+    shrubChance: 0.55,
+    /** Scrub-noise value above which a cell is vegetated rather than bare. */
+    shrubAt: 0.45,
+    rockSize: 0.8,
+    shrubSize: 1.15,
+    /** Fraction of its own size each instance is sunk into the ground. */
+    sink: 0.45,
+    /** Steeper than this holds nothing. */
+    minNormalY: 0.86,
+    /** Metres of clear ground around the spawn pad. */
+    spawnClear: 40,
+  },
+
   light: {
     /**
      * Three's lighting is physically based, so intensities are not 0..1 —
