@@ -55,6 +55,7 @@ src/
     camera.ts             spring-arm chase camera, FOV kick, shake
     tricks.ts             rotation accumulator → trick detection
     scoring.ts            airtime, trick points, combo multiplier, session best
+    timeTrial.ts          the three-minute run: clock, result, trial best
     boostFx.ts            exhaust flames, exhaust light, ember/dust trail
   ui/
     hud.ts                speed, airtime, trick banner, score, combo
@@ -271,6 +272,7 @@ needed to fly the bike.
 | Boost | Shift (either) or E | B |
 | Trick pose *(M5, with the rider rig)* | 1–4 | B / X / Y |
 | Respawn | R | Start |
+| Time trial | T | — |
 | Tuning panel | H | — |
 
 Pitch is on the vertical axis rather than a modifier chord: pull back to loop backwards, which is
@@ -586,6 +588,32 @@ milestone that makes them legible.
 Boost charges earned from clean landings are still not in. There is finally a currency to spend
 against, which is what that idea was waiting for.
 
+A **time trial** closed the loop the scoring section had left open. Free riding has no shape: the
+session total only ever goes up, so there is never a moment where a run is *finished* and never a
+number to beat. Three minutes supplies the missing half — it makes the combo worth gambling on
+(there is not time to rebuild it), makes the route a decision (the ziggurat's tiers are the biggest
+points in the park and cost 40 s to reach), and makes two runs comparable.
+
+The duration is **measured, not picked**: the harness's autopilot laps the circuit in 84 s flat out,
+so three minutes is a lap and most of another. Two rules carry it, and both fall out of §6's "points
+are banked by landings, never by air":
+
+- **The last flight counts.** The clock reaching zero does not end a run in mid-air; the run stays
+  open until the wheels are down. Ending on the buzzer would delete whatever was riding on the flight
+  for nothing the rider did, and the last ten seconds are exactly when everything gets thrown at one
+  more jump. Measured, a run overruns by about 1.4 s.
+- **Respawn does not stop the clock**, because R is how you cross the park and travelling is part of
+  the route rather than an escape from it.
+
+The trial keeps a best separate from the free-ride one: an unlimited session's total would never be
+threatened by a three-minute run, so scoring them against each other would make the trial pointless.
+
+One thing this turned up, and it is a maintenance lesson rather than a design one. `fastForward` — the
+dev-only handle that steps physics without waiting for frames — had its own copy of the loop's step
+body, so it kept stepping the bike, the tricks and the scoring while leaving the *clock* frozen. A
+duplicated loop body does not fail when it is written; it fails the next time something is added to
+one of the two copies. Both now call one `physicsStep`.
+
 The park then grew from a strip and two set pieces into **three tracks** — 30 features, roughly
 double — on the same principle the scoring loop implies but the layout had not yet been held to: a
 combo only survives two seconds on the ground, so a track is worth riding exactly as far as its next
@@ -683,6 +711,8 @@ asserts the things that otherwise take an hour of riding to notice:
 - **each track rides as one run** — the whole line, with a waypoint autopilot, reporting scored
   landings, best combo, points, and the longest spell on the ground against the combo window
 - the three tracks close into one lap — each line's end is measured against the start of the next
+- a timed run lasts exactly its duration, banks nothing after the buzzer, stays open for a flight
+  still in the air at zero, and never lowers its own best
 
 Every one of these was written because it caught something. Add to it rather than replacing it as
 the model grows.

@@ -33,10 +33,54 @@ WASD rides the bike, the arrow cluster rotates it.
 | `Space` | Jump |
 | `Shift` (either) or `E` | Boost — tap it, ground only |
 | `R` | Respawn |
+| `T` | Start (or restart) a 3-minute time trial |
 | `H` | Show/hide the tuning panel |
 
 A gamepad works too: triggers for throttle and brake, left stick to steer and pitch, bumpers to roll,
 `A` to jump, `B` to boost.
+
+## Time trial
+
+Press `T`. Three minutes, back to the spawn pad, score from zero — bank as much as you can and the
+run is a number you can beat.
+
+**Three minutes is measured rather than picked.** The harness's autopilot laps the circuit — spawn,
+the dirt track, the back road, the ribbon, home — in **84 seconds** flat out, banking 31 landings and
+6,478 points, and a person riding it is slower than that. Three minutes is therefore a lap and most of
+another: long enough that the *route* is a decision (the ziggurat's tiers are the biggest points in
+the park and cost 40 s to reach) and that a lost combo can be rebuilt, short enough that a bad start
+is worth abandoning and running again straight away. `T` restarts from anywhere, `R` drops back to
+free riding, and the duration is on a dial in the tuning panel under `Tricks & score`.
+
+Two rules do most of the work:
+
+- **The last flight counts.** If the clock hits zero while you're in the air, the run stays open until
+  you land. Points are only ever banked by a landing, so ending mid-flight would silently delete
+  whatever was riding on it — and the last ten seconds are precisely when a rider throws everything at
+  one more jump. Measured, a run typically overruns by about 1.4 s to finish the jump it's on.
+- **Respawning doesn't stop the clock.** `R` is how you cross the park, and spending ten seconds
+  travelling to the ziggurat is part of the route decision rather than an escape from it.
+
+The trial keeps its own best, separate from the free-ride one, because an unlimited session's total
+would never be threatened by a three-minute run. During a trial the `BEST` readout switches to the one
+you're actually chasing.
+
+**Boost** is a tap, not a hold: one press gives a 2.5 s burst that takes you from about 91 to 122 km/h,
+then a 1.5 s cooldown. It only starts on the ground, and an airborne press is ignored rather than
+consumed. A burst already running keeps going through the air, so launching mid-boost isn't punished.
+
+That matters more than the speed suggests. A bike leaves the ground when `v² · curvature > gravity`,
+so launchability scales with the *square* of speed — boosting takes the share of this map that can
+throw you from 7% to 18%. Boost doesn't just make you faster, it turns terrain into ramps.
+
+Visually a burst lights twin exhaust flames, throws a flickering pool of orange light across the dirt
+behind you, widens the camera FOV and punches the shake. There is also a pooled ember and dust trail,
+switched off by default (`emberRate` / `dustRate` are 0) — turn either up if you want it back. All of
+it is on dials under `Boost` in the tuning panel.
+
+The jump is a bunny hop that spends whatever the suspension has stored, so one taken just after a
+compression goes noticeably higher than one from a settled bike — about 1.3 m flat, 1.6 m loaded. You
+get exactly one per ground contact, so it can't be mashed into a hover.
 
 ## Current state: M4 — it keeps score
 
@@ -101,8 +145,9 @@ The combo also drops after two seconds of unbroken ground contact, which makes i
 than a balance — and makes the whoops worth riding. Chain small clean hops to build the multiplier,
 then cash it on something big: a backflip off #7 at ×7 is worth more than four of them taken cold.
 
-Session best persists to `localStorage`. `R` keeps your score, because respawn is how you cross the
-park and travelling shouldn't cost points, but it does drop the combo — nothing was landed.
+Session best persists to `localStorage`, as does the separate time-trial best. `R` keeps your score,
+because respawn is how you cross the park and travelling shouldn't cost points, but it does drop the
+combo — nothing was landed.
 
 Both trick detection and scoring are stepped at **physics rate, not render rate**. Two landings can
 fall inside one rendered frame, and the second must not erase the first's effect on the combo.
@@ -517,7 +562,7 @@ big it all feels).
 src/core/      loop (fixed timestep), input, tunables
 src/world/     heightfield, terrain mesh, sky
 src/bike/      state, physics, landing bands, model
-src/game/      chase camera, boost fx, trick detection, scoring
+src/game/      chase camera, boost fx, trick detection, scoring, time trial
 src/ui/        HUD, tuning panel
 scripts/sim.ts headless physics and park harness
 scripts/map.ts top-down park map

@@ -22,6 +22,8 @@ export interface InputState {
   boost: boolean;
   /** True for exactly one frame after the respawn key is pressed. */
   respawn: boolean;
+  /** True for exactly one frame after the time-trial key is pressed. */
+  trial: boolean;
 }
 
 const AXIS_DEADZONE = 0.18;
@@ -42,6 +44,7 @@ export class Input {
     jump: false,
     boost: false,
     respawn: false,
+    trial: false,
   };
 
   /** Fires once per keydown of a bound action key — used to fade the hint card. */
@@ -49,6 +52,7 @@ export class Input {
 
   private keys = new Set<string>();
   private respawnEdge = false;
+  private trialEdge = false;
   private jumpEdge = false;
   private boostEdge = false;
   private padJumpWasDown = false;
@@ -77,6 +81,7 @@ export class Input {
     if (e.code.startsWith('Arrow') || e.code === 'Space') e.preventDefault();
     if (!this.keys.has(e.code)) {
       if (e.code === 'KeyR') this.respawnEdge = true;
+      if (e.code === 'KeyT') this.trialEdge = true;
       // Edge-triggered, so holding the key down is one jump, not a hover.
       if (e.code === 'Space') this.jumpEdge = true;
       // Three bindings on purpose, to be tried against each other. Boost is a tap
@@ -129,6 +134,8 @@ export class Input {
     this.boostEdge = false;
     s.respawn = this.respawnEdge;
     this.respawnEdge = false;
+    s.trial = this.trialEdge;
+    this.trialEdge = false;
 
     if (this.gamepadIndex !== null) this.pollGamepad(s);
   }

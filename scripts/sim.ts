@@ -23,6 +23,7 @@ import { createBikeState, resetBike, groundSpeed, type BikeState } from '../src/
 import { stepBike } from '../src/bike/physics';
 import { Tricks, type TrickTally } from '../src/game/tricks';
 import { Scoring, type ScoreEvent } from '../src/game/scoring';
+import { TimeTrial, formatClock } from '../src/game/timeTrial';
 
 const STEP = 1 / 120;
 
@@ -1623,6 +1624,107 @@ console.log(
         `combo x${score.multiplier}` + (bestTrick ? `, last trick "${bestTrick}"` : ''),
     );
   }
+  console.log('');
+}
+
+// --- 13. the time trial -----------------------------------------------------
+// A clock is the half of the scoring loop free riding does not have: it makes a
+// run *finish*, which is what turns a total into a score. Three things have to
+// hold or it stops being a fair measure of the same three minutes.
+{
+  /** Ride the spawn strip with the clock running, and report what happened. */
+  function runTrial(opts: { airborneAtZero?: boolean } = {}) {
+    const s = createBikeState();
+    resetBike(s, hf);
+    const tricks = new Tricks();
+    const score = new Scoring();
+    const trial = new TimeTrial();
+    const input = idle();
+    input.throttle = 1;
+
+    score.restart();
+    trial.start();
+
+    let elapsed = 0;
+    let clockRanOn = 0;
+    let scoredAfterEnd = 0;
+    let totalAtEnd = -1;
+
+    for (let i = 0; i < 120 * 400; i++) {
+      // Put the bike in the air just before the buzzer, to test the one rule
+      // that is not simply "stop at zero".
+      if (opts.airborneAtZero && Math.abs(trial.remaining - 0.5) < STEP * 0.6) s.vel.y = 16;
+
+      stepBike(s, hf, input, STEP);
+      tricks.step(s, STEP);
+      if (!trial.frozen) score.step(s, tricks);
+      trial.step(s, score, STEP);
+
+      if (trial.phase === 'running') elapsed += STEP;
+      if (trial.phase === 'over') {
+        if (totalAtEnd < 0) totalAtEnd = score.total;
+        clockRanOn = Math.max(clockRanOn, trial.remaining);
+        scoredAfterEnd = Math.max(scoredAfterEnd, score.total - totalAtEnd);
+        // Keep riding for a few seconds to prove nothing else moves.
+        if (elapsed > 0 && i % 1 === 0 && score.total === totalAtEnd && trial.remaining === 0) {
+          if (i > 120 * (T.trial.duration + 6)) break;
+        }
+      }
+      if (!finite(s)) break;
+    }
+    return { trial, score, elapsed, clockRanOn, scoredAfterEnd, totalAtEnd };
+  }
+
+  const plain = runTrial();
+  check(
+    'a run lasts exactly its duration',
+    Math.abs(plain.elapsed - T.trial.duration) < 0.5 && plain.trial.phase === 'over',
+    `${plain.elapsed.toFixed(2)} s of ${T.trial.duration} s, ended ${plain.trial.phase}`,
+  );
+  check(
+    'and nothing scores after the buzzer',
+    plain.scoredAfterEnd === 0 && plain.trial.result === plain.totalAtEnd,
+    `${plain.trial.result.toLocaleString('en-US')} points, ${plain.scoredAfterEnd} banked afterwards`,
+  );
+
+  // The rule that matters most in the last ten seconds: points are banked by
+  // landings, so cutting a flight off at zero deletes what was riding on it for
+  // nothing the rider did. The run stays open until the wheels are down.
+  const late = runTrial({ airborneAtZero: true });
+  check(
+    'a flight in the air at zero still gets landed',
+    late.elapsed > T.trial.duration + 0.3 && late.trial.phase === 'over',
+    `clock ran ${(late.elapsed - T.trial.duration).toFixed(2)} s past zero to finish the jump`,
+  );
+
+  // The best is a record, and a record cannot go down.
+  {
+    const trial = new TimeTrial();
+    const score = new Scoring();
+    const s = createBikeState();
+    resetBike(s, hf);
+    trial.best = 5000;
+    score.total = 1200;
+    trial.start();
+    trial.remaining = 0;
+    trial.step(s, score, STEP);
+    const held = trial.best;
+    score.total = 9000;
+    trial.start();
+    trial.remaining = 0;
+    trial.step(s, score, STEP);
+    check(
+      'a worse run cannot lower the best',
+      held === 5000 && trial.best === 9000,
+      `1,200 left it at ${held.toLocaleString('en-US')}, 9,000 raised it to ${trial.best.toLocaleString('en-US')}`,
+    );
+  }
+
+  check(
+    'the clock reads as a countdown',
+    formatClock(180) === '3:00' && formatClock(59.4) === '1:00' && formatClock(0) === '0:00',
+    `180 -> ${formatClock(180)}, 9.2 -> ${formatClock(9.2)}, 0 -> ${formatClock(0)}`,
+  );
   console.log('');
 }
 

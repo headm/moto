@@ -211,6 +211,82 @@
       .landing.sketchy b, .landing.sketchy u { color: #ffb340; }
       .landing.bad b, .landing.bad u { color: #e8563f; }
 
+      /*
+       * The trial clock sits above the airtime slot rather than beside the
+       * score, in the band between the top of the screen and the 13% where
+       * `.centre` begins. That band is the only part of the HUD nothing else
+       * claims — the hint owns the top left and the tuning panel the top right —
+       * and a countdown has to be readable without looking away from the jump.
+       *
+       * When a run ends the clock is replaced by the result rather than stacked
+       * above it, and `.centre` is hidden outright, so the two can never argue
+       * over the same rows on a short window. That is the right precedence as
+       * well as the convenient one: once the clock has stopped, a landing banner
+       * is reporting points that no longer exist, and the only thing worth
+       * saying in the middle of the screen is what the run was worth.
+       */
+      .trial {
+        position: absolute;
+        left: 50%;
+        top: 3.2%;
+        transform: translateX(-50%);
+        text-align: center;
+        opacity: 0;
+        transition: opacity 220ms ease;
+      }
+      .trial.on, .trial.over { opacity: 1; }
+      .trial b {
+        display: block;
+        font-size: 36px;
+        font-weight: 700;
+        letter-spacing: -1px;
+        font-variant-numeric: tabular-nums;
+      }
+      .trial span {
+        display: block;
+        font-size: 11px;
+        color: var(--hud-dim);
+        letter-spacing: 2px;
+      }
+      /* The last seconds, when a rider is deciding whether to take one more. */
+      .trial.low b { color: #e8563f; }
+      .trial .result { display: none; }
+      .trial.over .clock { display: none; }
+      .trial.over .result { display: block; }
+      #hud.trialover .centre { display: none; }
+      .trial .result u {
+        display: block;
+        text-decoration: none;
+        font-size: 36px;
+        font-weight: 700;
+        letter-spacing: -1px;
+        color: var(--accent);
+        font-variant-numeric: tabular-nums;
+      }
+      .trial .result em {
+        display: block;
+        margin-top: 4px;
+        font-style: normal;
+        font-size: 11px;
+        color: var(--hud-dim);
+        letter-spacing: 1px;
+      }
+      .trial .result em i {
+        font-style: normal;
+        color: var(--hud);
+        font-variant-numeric: tabular-nums;
+      }
+      .trial .result em kbd {
+        display: inline-block;
+        min-width: 18px;
+        padding: 0 4px;
+        border: 1px solid #4a463f;
+        border-bottom-width: 2px;
+        border-radius: 4px;
+        color: var(--hud);
+        font: inherit;
+      }
+
       #stats {
         position: absolute;
         right: 18px;
@@ -255,12 +331,23 @@
         <kbd>Shift</kbd><kbd>E</kbd> boost — tap it, on the ground<br />
         <kbd>↑</kbd><kbd>↓</kbd> lean fwd / back &nbsp; <kbd>←</kbd><kbd>→</kbd> roll
         <span style="opacity: 0.6">(in the air)</span><br />
-        <kbd>R</kbd> respawn &nbsp; <kbd>H</kbd> hide tuning panel
+        <kbd>R</kbd> respawn &nbsp; <kbd>T</kbd> 3-minute time trial &nbsp;
+        <kbd>H</kbd> hide tuning panel
       </div>
       <div class="speedo"><b id="speed">0</b><span>KM/H</span></div>
       <div class="boost ready" id="boost">
         <label>BOOST</label>
         <div class="bar"><i id="boostfill"></i></div>
+      </div>
+      <div class="trial" id="trial">
+        <div class="clock">
+          <b id="trialclock">3:00</b><span id="triallabel">TIME TRIAL</span>
+        </div>
+        <div class="result">
+          <u id="trialscore">0</u>
+          <em><i id="trialbest">BEST 0</i> &nbsp;·&nbsp; <kbd>T</kbd> again &nbsp;
+            <kbd>R</kbd> free ride</em>
+        </div>
       </div>
       <div class="centre">
         <div class="air" id="air">

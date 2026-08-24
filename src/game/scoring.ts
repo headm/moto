@@ -129,4 +129,15 @@ export class Scoring {
     this.pending = 0;
     this.event = null;
   }
+
+  /**
+   * Back to zero. Distinct from `reset` because respawning deliberately keeps
+   * the total and only a *new run* — a time trial, or dropping back to free
+   * riding after one — starts the count again. `best` is untouched either way:
+   * nothing that happens after a score is banked can un-bank it.
+   */
+  restart() {
+    this.total = 0;
+    this.reset();
+  }
 }
