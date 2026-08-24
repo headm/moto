@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { T, loadTunables } from './core/tunables';
 import { createLoop } from './core/loop';
-import { Input } from './core/input';
+import { Input, type InputState } from './core/input';
 import { Heightfield } from './world/heightfield';
 import { buildTerrainMesh, type Terrain } from './world/terrainMesh';
 import { createSky, updateSky, applyLighting, applySkyTheme } from './world/sky';
@@ -16,6 +16,7 @@ import { ChaseCamera } from './game/camera';
 import { BoostFx } from './game/boostFx';
 import { Tricks } from './game/tricks';
 import { Scoring } from './game/scoring';
+import { TimeTrial } from './game/timeTrial';
 import { Hud } from './ui/hud';
 import { buildGui } from './ui/debug';
 
@@ -74,6 +75,7 @@ chase.reset(bike.pos, bike.yaw);
 
 const tricks = new Tricks();
 const scoring = new Scoring();
+const trial = new TimeTrial();
 
 const input = new Input();
 const hud = new Hud();
@@ -124,6 +126,33 @@ function applyTheme() {
   applyRender();
 }
 
+/**
+ * Start (or restart) a timed run. The bike goes back to the pad and the score
+ * goes back to zero — a trial is a fresh count, not a continuation, or the
+ * number at the end would depend on how long you had been riding beforehand.
+ */
+function startTrial() {
+  respawn();
+  scoring.restart();
+  trial.start();
+}
+
+/**
+ * One physics step and everything that reads it.
+ *
+ * All of it runs at physics rate, not render rate: two landings can fall inside
+ * a single rendered frame and the second must not erase the first's effect on
+ * the combo, and the clock must not hand out a frame's worth of free scoring
+ * after it has stopped. Shared with the dev-only `fastForward` below, which
+ * previously duplicated this and silently left the trial's clock frozen.
+ */
+function physicsStep(state: InputState, dt: number) {
+  stepBike(bike, hf, state, dt);
+  tricks.step(bike, dt);
+  if (!trial.frozen) scoring.step(bike, tricks);
+  trial.step(bike, scoring, dt);
+}
+
 function respawn() {
   resetBike(bike, hf);
   chase.reset(bike.pos, bike.yaw);
@@ -157,15 +186,23 @@ const loop = createLoop({
 
   onFrameStart() {
     input.poll();
-    if (input.state.respawn) respawn();
+    if (input.state.trial) startTrial();
+    // Respawn does not end a run: R is how you cross the park, and choosing to
+    // spend ten seconds travelling to the ziggurat is part of the route rather
+    // than a way out of the clock.
+    if (input.state.respawn) {
+      // ...but it is the way back to free riding once a run is over, since the
+      // result card is the only thing holding the score still.
+      if (trial.frozen) {
+        trial.cancel();
+        scoring.restart();
+      }
+      respawn();
+    }
   },
 
   onStep(dt) {
-    stepBike(bike, hf, input.state, dt);
-    // Both run at physics rate, not render rate: two landings can fall inside a
-    // single rendered frame, and the second must not erase the first's combo.
-    tricks.step(bike, dt);
-    scoring.step(bike, tricks);
+    physicsStep(input.state, dt);
   },
 
   onRender(alpha, frameDt) {
@@ -205,14 +242,23 @@ const loop = createLoop({
       trick: tricks.live.label,
       pending: scoring.pending,
       score: scoring.total,
-      best: scoring.best,
+      // In a run, the number to beat is the best *run* — the free-ride best is
+      // an unlimited session's total and would never be threatened by one.
+      best: trial.phase === 'idle' ? scoring.best : trial.best,
       multiplier: scoring.multiplier,
       scoreEvent: scoring.event,
       fps: loop.fps,
       frameDt,
       tris: triangleCount,
+      trial: {
+        phase: trial.phase,
+        remaining: trial.remaining,
+        result: trial.result,
+        best: trial.best,
+      },
     });
     scoring.event = null;
+    trial.justEnded = false;
 
     renderer.render(scene, chase.camera);
   },
@@ -236,6 +282,8 @@ if (import.meta.env.DEV) {
       chase,
       T,
       respawn,
+      trial,
+      startTrial,
       /** Set `T.theme` then call this — same path the panel's dropdown takes. */
       applyTheme,
       /**
@@ -244,13 +292,9 @@ if (import.meta.env.DEV) {
        * the only way to get the bike somewhere interesting for a screenshot.
        */
       fastForward(seconds: number, hold: Partial<typeof input.state> = {}) {
-        const held = { ...input.state, ...hold, respawn: false };
+        const held = { ...input.state, ...hold, respawn: false, trial: false };
         const steps = Math.round(seconds * 120);
-        for (let i = 0; i < steps; i++) {
-          stepBike(bike, hf, held, 1 / 120);
-          tricks.step(bike, 1 / 120);
-          scoring.step(bike, tricks);
-        }
+        for (let i = 0; i < steps; i++) physicsStep(held, 1 / 120);
         chase.reset(bike.pos, bike.yaw);
         return this.probe();
       },

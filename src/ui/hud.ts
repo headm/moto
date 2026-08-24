@@ -6,6 +6,8 @@
 
 import type { LandingReport } from '../bike/landing';
 import type { ScoreEvent } from '../game/scoring';
+import { formatClock, type TrialPhase } from '../game/timeTrial';
+import { T } from '../core/tunables';
 
 const BAND_LABEL = {
   clean: 'CLEAN LANDING',
@@ -43,6 +45,12 @@ export class Hud {
   private bestEl = el('scorebest');
   private comboEl = el('combo');
   private comboValueEl = el('combovalue');
+  private hudEl = el('hud');
+  private trialEl = el('trial');
+  private trialClockEl = el('trialclock');
+  private trialLabelEl = el('triallabel');
+  private trialScoreEl = el('trialscore');
+  private trialBestEl = el('trialbest');
 
   /** Seconds the landing banner stays up. */
   private landingTimer = 0;
@@ -56,6 +64,8 @@ export class Hud {
   private lastBest = -1;
   private lastMultiplier = -1;
   private airVisible = false;
+  private lastClock = '';
+  private lastTrialClass = '';
   private statsAccum = 0;
   private hintFaded = false;
 
@@ -120,6 +130,7 @@ export class Hud {
     fps: number;
     frameDt: number;
     tris: number;
+    trial: { phase: TrialPhase; remaining: number; result: number; best: number };
   }) {
     if (opts.landing.pending) {
       opts.landing.pending = false;
@@ -185,6 +196,40 @@ export class Hud {
       this.lastMultiplier = opts.multiplier;
       this.comboValueEl.textContent = String(opts.multiplier);
       this.comboEl.classList.toggle('on', opts.multiplier > 1);
+    }
+
+    // ---- time trial --------------------------------------------------------
+    const tr = opts.trial;
+    // `low` is on the class rather than the text so the colour change is a
+    // repaint of one element and not a rewrite of the countdown every frame.
+    const trialClass =
+      tr.phase === 'running'
+        ? `trial on${tr.remaining <= T.trial.warnAt ? ' low' : ''}`
+        : tr.phase === 'over'
+          ? 'trial over'
+          : 'trial';
+    if (trialClass !== this.lastTrialClass) {
+      this.lastTrialClass = trialClass;
+      this.trialEl.className = trialClass;
+      this.hudEl.classList.toggle('trialover', tr.phase === 'over');
+      if (tr.phase === 'over') {
+        // The airtime slot is going away, so its state has to go with it or the
+        // next flight after a restart inherits a stale banner.
+        this.hideLanding();
+        this.airVisible = false;
+        this.airEl.classList.remove('on');
+        this.trialScoreEl.textContent = fmt(tr.result);
+        this.trialBestEl.textContent =
+          tr.result >= tr.best && tr.result > 0 ? 'NEW BEST' : `BEST ${fmt(tr.best)}`;
+      }
+      this.trialLabelEl.textContent = 'TIME TRIAL';
+    }
+    if (tr.phase === 'running') {
+      const clock = formatClock(tr.remaining);
+      if (clock !== this.lastClock) {
+        this.lastClock = clock;
+        this.trialClockEl.textContent = clock;
+      }
     }
 
     this.statsAccum += opts.frameDt;

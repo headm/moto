@@ -55,6 +55,7 @@ src/
     camera.ts             spring-arm chase camera, FOV kick, shake
     tricks.ts             rotation accumulator → trick detection
     scoring.ts            airtime, trick points, combo multiplier, session best
+    timeTrial.ts          the three-minute run: clock, result, trial best
     boostFx.ts            exhaust flames, exhaust light, ember/dust trail
   ui/
     hud.ts                speed, airtime, trick banner, score, combo
@@ -163,18 +164,39 @@ into the heightfield before mesh generation:
 
 - `kicker(pos, dir, length, height, curve)` — the bread and butter, launches you
 - `tabletop(pos, dir, length, height, deckLength)` — kicker + flat deck + landing ramp, with a gap
-- `stepUp` / `stepDown` — height changes across a gap
-- `berm(pos, arcCenter, radius, bankAngle)` — banked turn to link features
+- `gap` — take-off, a void, then a landing at any height. One shape covering doubles (`pitY` dug
+  below the datum, `landY` back at it), step-ups (`landY` above it) and step-downs (`landY` below);
+  they differ only in where the far side sits
+- `berm(pos, arcCenter, radius, bankAngle)` — banked turn to link features, and the climb between two
+  straights that sit at different datums
 - `roller(pos, dir, count, spacing, height)` — whoops for rhythm sections
-- `hip(pos, dir, height, twist)` — launches you off-axis; rewards spins
+- `hip(pos, dir, height, twist)` — a kicker turned off-axis; rewards spins
 - `bigAir(pos, dir)` — the one enormous ramp with a long, forgiving landing slope
+- `motte` / `staircase` / `causeway` — the three landform types the set pieces are built from
 
 Ramp faces get a **cubic ease** rather than a straight wedge, so the transition at the base is
 smooth and the lip kicks. A linear wedge feels like hitting a curb.
 
-**Layout**: a hand-authored `park.ts` array of feature definitions arranged as a loop — start gate,
-warmup rollers, three progressively bigger tabletops, a hip into the bowl, the big air ramp, and
-berms linking it back to the start. Data-only, so iterating on the park costs an HMR reload.
+**Layout**: a hand-authored `park.ts` array of feature definitions arranged as **three tracks joined
+into one lap** — the dirt track (south out of the spawn, a banked right-hander, a westbound rhythm
+section, a hairpin in the far corner), the castle (two summits, a gap jump between them, a banked
+ribbon, and a straight home to the spawn pad) and the ziggurat (a warm-up, six tiers jumped one at a
+time, the pinnacle, and a turn west onto a slip road). Data-only, so iterating on the park costs an
+HMR reload.
+
+The three joins are written down as `HANDOVERS` and measured: the ziggurat's slip road merges into the
+dirt track's westbound leg, the dirt track's hairpin runs out onto the motte's skirt, and the castle's
+finish lands beside the spawn pad. Each is a claim about two things being in the same place, which is
+the kind that rots silently as soon as either end is retuned.
+
+Ride order is written down separately from the array, in `TRACKS`. The array is a *stamping* order —
+it has to be, because approach corridors overwrite each other — and a track is a claim about flow that
+only a ride can check.
+
+Reading a park costs a ride, which is why `npm run map` renders the same heightfield the game collides
+against as a top-down hillshade with the tracks drawn on it. An overlapping corridor, a landing pad
+standing proud as a causeway, and a cut across another track are all obvious from above and nearly
+invisible from behind the bike.
 
 **Rendering**: one non-indexed BufferGeometry, flat-shaded, vertex colors driven by slope and
 height (dirt on flats, darker packed dirt on ramp faces, rock on steep slopes, sparse grass in
@@ -250,6 +272,7 @@ needed to fly the bike.
 | Boost | Shift (either) or E | B |
 | Trick pose *(M5, with the rider rig)* | 1–4 | B / X / Y |
 | Respawn | R | Start |
+| Time trial | T | — |
 | Tuning panel | H | — |
 
 Pitch is on the vertical axis rather than a modifier chord: pull back to loop backwards, which is
@@ -450,6 +473,94 @@ Four things this turned up, all of which change the sketch below:
    Measured after: every feature's air time identical to the centisecond, the legitimate
    stepped climbs up the ziggurat unchanged, and only the wall case different. The
    harness asserts the wrong-side charge stays near the summit rather than doubling it.
+17. **An arc has two ways to miss it, and only one of them looks like missing.** The
+   ribbon is swept between two angles, so a landing needs the right *radius* and to be
+   inside the *sweep*. The first placement put its start 10 m too far out and every
+   launch landed at a radial offset of essentially zero — on open desert, because the
+   arc had not begun there. A check measuring only radial distance passed all five test
+   speeds and reported a feature that did not work. Any swept or bounded shape needs
+   both halves asserted, and the cheap tell is to confirm the touchdown is *above the
+   bare terrain* rather than merely near where the geometry should be.
+18. **Deriving a dimension beats authoring it when an engine limit governs it.** Nothing
+   steeper than ~45 degrees can be drawn at `meshStride` 4 or ridden past
+   `susp.climbSlopeDeg`, which bounds how wide an elevated ribbon's shoulder must be —
+   and that bound scales with its height above the ground it happens to cross. Tying
+   shoulder to height keeps every cross-section legal automatically and produces the
+   right silhouette for nothing: broad where it leaves a summit, thin as it descends.
+   Authoring a fixed width is the version that is undrawable at one end.
+19. **A stamp that only raises has a failure mode that is invisible.** The ribbon's deck
+   was authored below the dunes it crossed for a third of its length, so it was simply
+   absent there rather than wrong. Features that never dig need a clearance floor
+   against the ground they cross, or terrain — or a reseed — silently deletes parts of
+   them.
+
+20. **A step-up and a step-down are the same stamp, and the touchdown zone decides which one works.**
+   Both are "take off, cross a void, land at a different height", and both fail the same way: on the
+   *rise* — the wall out of the pit, or the drop off the back of it — landing under the wheels at 44
+   to 51 degrees turned a 15 degree attitude into a 62 degree error and a bad landing, off a ramp
+   whose numbers all looked reasonable. What fixes it is knowing where the bike actually comes down
+   (u ≈ 31-35 past the origin, for a mid-size kicker at 25 m/s — the flight is ~20 m, not the ~30 m
+   the ballistic formula suggests, because pitch lags and the bike leaves flatter than the lip) and
+   putting the transition somewhere else. For a step-down, finish the descent *before* it: the drop
+   belongs on the take-off's own back side and the landing is then flat and 5 m lower. For a step-up,
+   stretch the rise *through* it — a 6 m gain over 18 m lands cleaner than flat ground does, because
+   pitch error is measured against the slope and a face at roughly the launch angle cancels it.
+21. **The back side of a pit has to carry the lip plus the pit.** `back` sized against a 2 m lip is a
+   cliff once 3 m are dug out under it, and the profile is smoothstepped, which peaks at 1.5x its
+   average slope: 4.6 m over 5 m draws at 65 degrees, past the 45 degree mesh limit and straight into
+   the wall-trampoline band of §16. It is now measured per feature rather than derived, because the
+   quantity that governs it is the one the author is not looking at.
+22. **An approach corridor will not cut another feature's dirt, but will happily fill it.** The guard
+   from §9 is one-sided, and that is invisible until something sits *below* the datum. Any pit that
+   falls inside the next feature's approach — its own length plus the 26 m lead-in fade — is quietly
+   levelled, and the feature becomes a speed bump with a name. The cheap defence is to measure the
+   pit floor rather than trust the parameter; it caught this twice while the westbound leg was being
+   laid out. The layout answer is to spend the constraint where it costs nothing: order a section
+   kicker-then-double rather than double-then-kicker, and the only pit with nothing after it is the
+   last feature on the track.
+23. **A corner costs the combo, and that is a layout constraint rather than a scoring bug.** A 48 m
+   berm is 75 m of arc; with its entry and exit that is three to four seconds on the ground against a
+   two second combo window, so the multiplier always resets in a turn. A track can therefore only
+   afford a corner if the section after it is long enough to build a new one — which is why the
+   ziggurat runs straight south instead of turning east into the 150 m that was left over there.
+   Measured: track 1 chains x7, resets in the south turn, and chains again down the westbound leg.
+24. **A per-feature harness cannot see a track.** Every check before this one started the bike on one
+   feature's approach at a speed handed to it. That answers "does this ramp work" and it cannot
+   answer the question the park exists for — does landing one feature put you on the run-up to the
+   next, close enough that the combo is still alive. Riding the whole line with a waypoint autopilot
+   and reporting scored landings, best combo, and the longest spell on the ground is a different
+   measurement, and it immediately found gaps too long for the window. It also found two bugs in
+   *itself* first: the run ended at the last waypoint, so the final flight was never scored, and it
+   counted its own 50 m run-in to the first lip as combo-breaking ground time. A harness that
+   measures flow has to be honest about where its own run starts and stops.
+25. **A track's ride order is not its stamping order, and writing only one down loses the other.**
+   `PARK` has to be ordered for stamping. `TRACKS` names the line a rider takes, the harness rides it,
+   and a coverage check asserts every feature appears on exactly one line — so a feature cannot be
+   added to the park and quietly left off every route through it.
+26. **A track that ends nowhere rides fine and finishes nothing.** The first version of all three ran
+   out into open desert, and each was individually good — the flaw only exists at the level above the
+   track, where a lap either closes or it doesn't. Joining them cost two banked turns and four
+   features, and the geometry did most of the choosing.
+29. **Join a set piece where it comes back to the ground, not where it looks nearest.** The dirt
+   track's connector first turned 166 degrees to aim east-north-east at the mounds, which put its run
+   out onto the motte's south-west skirt: measurably a connection, and from any view of it plainly a
+   path driving at the far peak. The mounds have exactly one rideable entrance — the motte's east
+   flank — and every other part of the castle is reached by *jumping*, so there is nothing for a
+   connector from the south-west to join until the castle returns to the desert, which it does at the
+   ribbon 180 m further north. Turning 107 degrees instead and running up behind both mounds is
+   shorter, keeps the mounds intact, and puts the two lines beside each other where a rider can
+   actually cross from one to the other.
+27. **Aim a connector, don't just point it.** Both joins are arcs with a straight off the end, and the
+   straight is *derived* from the arc's measured exit rather than authored beside it, so the exit
+   heading is a number chosen to make the run arrive somewhere specific: the ziggurat's slip road is
+   swept to 106 degrees precisely so 168 m of straight lands on the south turn's own ride line, three
+   quarters of the way round it. Authored separately, the two drift apart the first time either is
+   retuned and the track quietly stops connecting.
+28. **A join is a measurement, and the obvious measurement is the wrong one.** The first version of the
+   handover check compared the end of one line to the nearest point of the next, which called a run
+   finishing on the motte's skirt a 99 m miss — because a mound's "line" is its centre and it is
+   ridden from anywhere on its flank. Reaching the outer radius *is* reaching it. Any check against a
+   feature with extent has to measure against the extent.
 
 Original sketch, still to do: Heightfield to 1 m cells (`res: 1025`, `meshStride` 4 to hold the
 triangle count) so a lip is actually resolved. Mask-blend stamps — *not* additive, or a ramp on a
@@ -476,6 +587,40 @@ milestone that makes them legible.
 
 Boost charges earned from clean landings are still not in. There is finally a currency to spend
 against, which is what that idea was waiting for.
+
+A **time trial** closed the loop the scoring section had left open. Free riding has no shape: the
+session total only ever goes up, so there is never a moment where a run is *finished* and never a
+number to beat. Three minutes supplies the missing half — it makes the combo worth gambling on
+(there is not time to rebuild it), makes the route a decision (the ziggurat's tiers are the biggest
+points in the park and cost 40 s to reach), and makes two runs comparable.
+
+The duration is **measured, not picked**: the harness's autopilot laps the circuit in 84 s flat out,
+so three minutes is a lap and most of another. Two rules carry it, and both fall out of §6's "points
+are banked by landings, never by air":
+
+- **The last flight counts.** The clock reaching zero does not end a run in mid-air; the run stays
+  open until the wheels are down. Ending on the buzzer would delete whatever was riding on the flight
+  for nothing the rider did, and the last ten seconds are exactly when everything gets thrown at one
+  more jump. Measured, a run overruns by about 1.4 s.
+- **Respawn does not stop the clock**, because R is how you cross the park and travelling is part of
+  the route rather than an escape from it.
+
+The trial keeps a best separate from the free-ride one: an unlimited session's total would never be
+threatened by a three-minute run, so scoring them against each other would make the trial pointless.
+
+One thing this turned up, and it is a maintenance lesson rather than a design one. `fastForward` — the
+dev-only handle that steps physics without waiting for frames — had its own copy of the loop's step
+body, so it kept stepping the bike, the tricks and the scoring while leaving the *clock* frozen. A
+duplicated loop body does not fail when it is written; it fails the next time something is added to
+one of the two copies. Both now call one `physicsStep`.
+
+The park then grew from a strip and two set pieces into **three tracks** — 30 features, roughly
+double — on the same principle the scoring loop implies but the layout had not yet been held to: a
+combo only survives two seconds on the ground, so a track is worth riding exactly as far as its next
+feature is close. That needed two new stamp types (`gap` and `berm`), a ride order written down
+separately from the stamping order, and a harness that rides a whole line rather than one ramp. See
+§10's M3 list, items 20-25 — every one of them came out of laying track rather than out of building
+the shapes.
 
 Five things this turned up:
 
@@ -560,6 +705,14 @@ asserts the things that otherwise take an hour of riding to notice:
 - contact doesn't flicker, and the terrain can still launch the bike at speed
 - a 25 m drop is survived, doesn't trampoline, and settles back to ride height
 - three minutes of pseudo-random input stays finite and bounded
+- every feature launches the bike and none is unlandable with no input at all
+- every dug pit and raised plateau survived stamping, and no pit's back side is a cliff
+- each banked turn holds its speed and stays inside the mesh's 45 degree draw limit
+- **each track rides as one run** — the whole line, with a waypoint autopilot, reporting scored
+  landings, best combo, points, and the longest spell on the ground against the combo window
+- the three tracks close into one lap — each line's end is measured against the start of the next
+- a timed run lasts exactly its duration, banks nothing after the buzzer, stays open for a flight
+  still in the air at zero, and never lowers its own best
 
 Every one of these was written because it caught something. Add to it rather than replacing it as
 the model grows.

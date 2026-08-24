@@ -235,6 +235,21 @@ export const DEFAULTS = {
     minAirTime: 0.25,
   },
 
+  trial: {
+    /**
+     * Seconds in a timed run.
+     *
+     * Measured, not picked: the harness's autopilot laps the circuit — spawn,
+     * the dirt track, the back road, the ribbon, home — in 84 s flat out, and a
+     * person is slower than that. Three minutes is a lap and most of another,
+     * which is the shortest run in which the *route* is a decision rather than
+     * a formality, and still short enough to start again straight away.
+     */
+    duration: 180,
+    /** Seconds left at which the clock starts reading as urgent. */
+    warnAt: 15,
+  },
+
   score: {
     /**
      * Points per second-squared of air. Airtime is *squared* before this is

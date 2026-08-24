@@ -117,6 +117,11 @@ export function buildGui(cb: DebugCallbacks): GUI {
   score.add(T.score, 'keepSketchy', 0, 1, 0.05);
   score.add(T.score, 'maxMultiplier', 1, 50, 1);
   score.add(T.score, 'comboWindow', 0.5, 15, 0.5);
+  // On the same folder as the scoring dials, because the length of a run and
+  // what a run is worth are one question: shorten it and the combo window,
+  // the route and the airtime curve all change what they mean.
+  score.add(T.trial, 'duration', 30, 600, 15).name('trial duration');
+  score.add(T.trial, 'warnAt', 0, 60, 1).name('trial warn at');
 
   const steer = gui.addFolder('Steering & lean').close();
   steer.add(T.steer, 'maxYawRate', 0.4, 5, 0.05);
