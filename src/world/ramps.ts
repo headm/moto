@@ -96,6 +96,45 @@ export interface Kicker extends FeatureBase {
   landing: number;
 }
 
+/**
+ * Take-off, a **void**, then a landing at whatever height you like. One shape
+ * covering the whole `stepUp` / `stepDown` / double family from §5 of the plan,
+ * because they differ only in where the far side sits:
+ *
+ * - **double** — `pitY` dug below the datum, `landY` back at it. Clear it and
+ *   nothing happens; come up short and you drop into the pit and grind out of it.
+ * - **step-up** — `landY` above the datum. Clear it and you *keep* the height for
+ *   whatever comes next, which is the only way a straight gains altitude without
+ *   a climb.
+ * - **step-down** — `landY` below it. Same jump, far more air, and the landing
+ *   arrives while you are still going up.
+ *
+ * The pit is what separates this from a tabletop. A tabletop's deck is level at
+ * lip height, so coming up short is a non-event — that is what makes it the
+ * friendly shape. Here the far wall (`rise`) is pointing at you, and the same
+ * currency the rest of the game uses applies: no reset, just the speed you lose
+ * climbing out.
+ */
+export interface Gap extends FeatureBase {
+  kind: 'gap';
+  /** Take-off face, same profile family as a kicker. */
+  length: number;
+  angleDeg: number;
+  exponent?: number;
+  face?: 'power' | 'crest';
+  height?: number;
+  /** Back side of the take-off, descending to the pit floor. */
+  back: number;
+  /** Level void between the two sides, and how far below the datum it sits. */
+  pit: number;
+  pitY: number;
+  /** Face climbing out of the pit to the landing plateau. */
+  rise: number;
+  /** Landing plateau height relative to the datum, and its level extent. */
+  landY: number;
+  landing: number;
+}
+
 export interface Tabletop extends FeatureBase {
   kind: 'tabletop';
   length: number;
@@ -232,7 +271,120 @@ export interface Staircase extends FeatureBase {
   summit: number;
 }
 
-export type Feature = Kicker | Tabletop | Rollers | Pond | Motte | Staircase;
+/**
+ * A curved elevated ribbon: jumped onto, ridden round, and ridden off.
+ *
+ * The shoulder is **derived from the deck's height above the ground it crosses**,
+ * not authored. That is the whole trick, and it comes from two limits this engine
+ * imposes: terrain collides at 1 m cells but renders at `meshStride` 4, so a face
+ * steeper than about 45 degrees is drawn as something other than what the bike
+ * hits; and past `susp.climbSlopeDeg` the suspension's vertical push is faded out
+ * to stop walls acting as trampolines. Tying the shoulder to the height keeps
+ * every cross-section inside both limits automatically, and gives the shape for
+ * free: a broad embankment where it leaves the motte high up, tapering to a thin
+ * ribbon as it descends. Authoring a fixed width instead would either be
+ * undrawable at the high end or absurdly wide at the low one.
+ *
+ * The arc is swept from `startAngle` to `endAngle` in **atan2(dz, dx)** terms —
+ * the same convention as `Motte.entryAngle`, and deliberately not the yaw
+ * convention, which differs by PI/2.
+ */
+export interface Causeway extends FeatureBase, Arc {
+  kind: 'causeway';
+  /** Half-width of the level rideable ribbon. This is the "skinny" dial. */
+  rideHalfWidth: number;
+  /**
+   * Shoulder run as a multiple of the deck's height above local ground. 1 is a
+   * 45 degree bank — the absolute limit of what the mesh can draw. Above that is
+   * shallower and safer.
+   */
+  shoulderRatio: number;
+  /** Deck height at the start of the sweep, and at the end. */
+  startY: number;
+  endY: number;
+  /** Fraction of the sweep over which the deck fades down to meet the desert. */
+  exitFade: number;
+  /**
+   * Floor on how far the deck sits above whatever ground it crosses.
+   *
+   * The stamp only ever raises, so anywhere the desert rises above the authored
+   * deck the ribbon simply is not there — a hole in the path rather than a visible
+   * fault. The dunes under this arc swell by 6 m across its middle third and did
+   * exactly that. Lifting the deck to clear them fixes it for this terrain; this
+   * keeps it fixed if the terrain is ever reseeded.
+   */
+  minClearance: number;
+}
+
+/**
+ * A banked turn: the thing that makes a *track* out of a straight strip.
+ *
+ * Swept along an arc like a causeway, but carved rather than raised — the ride
+ * line is levelled onto a datum and the ground *outside* it is banked up, so the
+ * faster you enter the higher up the bank you ride and the more of the corner the
+ * geometry does for you. Nothing enforces the line: fall off the top of the bank
+ * and you are on open desert, drop to the bottom and you scrub speed on the flat.
+ *
+ * The bank profile is `h · (u/run)^1.7` rather than a straight wedge. A constant
+ * slope makes riding higher no different from riding low; a face that steepens
+ * with height gives the corner a lip to lean on and, at the very top, an edge to
+ * jump off — which is the second thing a berm is for.
+ *
+ * `startY` / `endY` let the turn also be the climb or the descent between two
+ * straights sitting at different datums. Spread over an arc, a step that would be
+ * a wall on a lead-in fade becomes a grade you barely notice.
+ *
+ * Angles are **atan2(dz, dx)**, the same convention as `Motte.entryAngle` and
+ * `Causeway` — not the yaw convention, which differs by PI/2.
+ */
+export interface Berm extends FeatureBase, Arc {
+  kind: 'berm';
+  /** Half-width of the level band, centred on `radius`. */
+  rideHalfWidth: number;
+  /** The bank outside the ride line: how high it gets, and over what run. */
+  bankHeight: number;
+  bankRun: number;
+  /** How far inside the ride line the level band runs before it fades out. */
+  innerRun: number;
+  /** Datum at the entry and at the exit; the turn ramps between them. */
+  startY?: number;
+  endY?: number;
+  /** Fraction of the sweep the stamp fades in over at each end. */
+  endFade: number;
+}
+
+export type Feature =
+  | Kicker
+  | Gap
+  | Tabletop
+  | Rollers
+  | Pond
+  | Motte
+  | Staircase
+  | Causeway
+  | Berm;
+
+/** The two arc-swept features share a centreline, so they share this. */
+export interface Arc {
+  cx: number;
+  cz: number;
+  radius: number;
+  startAngle: number;
+  endAngle: number;
+}
+
+/** Where an arc's centreline is at sweep fraction `t`, and which way it runs. */
+export function arcPoint(f: Arc, t: number): { x: number; z: number; yaw: number } {
+  const a = f.startAngle + (f.endAngle - f.startAngle) * t;
+  // Tangent of the arc, converted from atan2 terms into the yaw convention.
+  const dir = f.endAngle > f.startAngle ? 1 : -1;
+  return {
+    x: f.cx + Math.cos(a) * f.radius,
+    z: f.cz + Math.sin(a) * f.radius,
+    // forward = (sin yaw, cos yaw), and the arc's tangent is dir * (-sin a, cos a).
+    yaw: Math.atan2(-Math.sin(a) * dir, Math.cos(a) * dir),
+  };
+}
 
 /**
  * Lip height that produces the requested launch angle. For h = H·tⁿ the lip slope
@@ -243,7 +395,10 @@ export function lipHeight(length: number, angleDeg: number, exponent = 2): numbe
   return (length * Math.tan((angleDeg * Math.PI) / 180)) / exponent;
 }
 
-export function featureLipHeight(f: Kicker | Tabletop): number {
+/** Everything with a take-off face, which is everything the validator rides. */
+export type Jump = Kicker | Gap | Tabletop;
+
+export function featureLipHeight(f: Jump): number {
   if ('height' in f && f.height !== undefined) return f.height;
   return lipHeight(f.length, f.angleDeg, f.exponent ?? 2);
 }
@@ -253,8 +408,8 @@ export function featureLipHeight(f: Kicker | Tabletop): number {
  * the upward acceleration the ramp demands; anything far above gravity throws the
  * bike hard and works the suspension to its stop on the way.
  */
-export function lipCurvature(f: Kicker | Tabletop): number {
-  if (f.kind === 'kicker' && f.face === 'crest') {
+export function lipCurvature(f: Jump): number {
+  if (f.kind !== 'tabletop' && f.face === 'crest') {
     // A smoothstep crest is *convex* at the top: h'' = -6H/L². You are thrown
     // because the ground drops away faster than gravity can follow, which is the
     // same criterion as terrain launchability rather than a spring release.
@@ -272,6 +427,11 @@ export function launchRange(angleDeg: number, speed: number, gravity: number): n
 
 function smoothstep01(t: number): number {
   return t * t * (3 - 2 * t);
+}
+
+/** Wrap to (-PI, PI]. Local copy: world code does not depend on bike code. */
+function wrapAngle(a: number): number {
+  return Math.atan2(Math.sin(a), Math.cos(a));
 }
 
 /** Surface height of a motte above its base. Radial only — see the type comment. */
@@ -349,10 +509,12 @@ function staircaseHeight(f: Staircase, u: number): number {
 }
 
 /** Total distance a feature occupies past its origin. */
-function featureLength(f: Feature): number {
+export function featureLength(f: Feature): number {
   switch (f.kind) {
     case 'kicker':
       return f.length + f.back + f.landing;
+    case 'gap':
+      return f.length + f.back + f.pit + f.rise + f.landing;
     case 'tabletop':
       return f.length + f.deck + f.down + f.runout;
     case 'rollers':
@@ -361,6 +523,9 @@ function featureLength(f: Feature): number {
       return f.length;
     case 'motte':
       return f.outerRadius + f.skirt;
+    case 'causeway':
+    case 'berm':
+      return f.radius * Math.abs(f.endAngle - f.startAngle);
     case 'staircase':
       return (f.tiers - 1) * staircaseCell(f) + f.riserLength + f.summit;
   }
@@ -389,6 +554,30 @@ function profile(f: Feature, u: number, v: number): number {
       return 0;
     }
 
+    case 'gap': {
+      const H = featureLipHeight(f);
+      if (u <= f.length) {
+        const t = u / f.length;
+        return f.face === 'crest' ? H * smoothstep01(t) : H * Math.pow(t, f.exponent ?? 2);
+      }
+      let o = f.length;
+      if (u <= o + f.back) {
+        // Back side, down into the pit rather than back to the datum.
+        const t = (u - o) / f.back;
+        return f.pitY + (H - f.pitY) * (1 - smoothstep01(t));
+      }
+      o += f.back;
+      if (u <= o + f.pit) return f.pitY;
+      o += f.pit;
+      if (u <= o + f.rise) {
+        // The far wall. Smoothstepped, so its top rolls over into the plateau and
+        // a landing arriving a little short still meets dirt going the right way.
+        const t = (u - o) / f.rise;
+        return f.pitY + (f.landY - f.pitY) * smoothstep01(t);
+      }
+      return f.landY;
+    }
+
     case 'tabletop': {
       const H = featureLipHeight(f);
       if (u <= f.length) {
@@ -414,6 +603,11 @@ function profile(f: Feature, u: number, v: number): number {
 
     case 'motte':
       // Radial, so it never uses the corridor path; applyMotte handles it.
+      return 0;
+
+    case 'causeway':
+    case 'berm':
+      // Swept along an arc, so these have their own paths too.
       return 0;
 
     case 'staircase':
@@ -467,6 +661,8 @@ function tailFade(f: Feature): number {
     // real range, or the bike touches down on the taper and reads off-angle.
     case 'kicker':
       return f.landing * 0.38;
+    case 'gap':
+      return f.landing * 0.38;
     case 'tabletop':
       return f.runout * 0.5;
     case 'rollers':
@@ -474,6 +670,9 @@ function tailFade(f: Feature): number {
     case 'pond':
       return f.length * 0.2;
     case 'motte':
+      return END_FADE;
+    case 'causeway':
+    case 'berm':
       return END_FADE;
     case 'staircase':
       return END_FADE;
@@ -533,11 +732,160 @@ function applyMotte(hf: Heightfield, f: Motte) {
   }
 }
 
+/**
+ * Stamp a causeway. Swept along an arc rather than down a corridor.
+ *
+ * Only ever *raises* ground. A ribbon crossing a dune higher than its own deck
+ * would otherwise cut a trench through it, which reads as a slot rather than as a
+ * path on legs — and, worse, would leave the trench walls vertical.
+ */
+function applyCauseway(hf: Heightfield, f: Causeway) {
+  const { res, cell, half, data, mark } = hf;
+  const sweep = f.endAngle - f.startAngle;
+
+  // Bound the work to the arc's annulus plus the widest shoulder it could throw.
+  const maxLift = Math.max(f.startY, f.endY) + 40;
+  const reach = f.rideHalfWidth + maxLift * f.shoulderRatio;
+  const outer = f.radius + reach;
+
+  const i0 = Math.max(0, Math.floor((f.cx - outer + half) / cell));
+  const i1 = Math.min(res - 1, Math.ceil((f.cx + outer + half) / cell));
+  const j0 = Math.max(0, Math.floor((f.cz - outer + half) / cell));
+  const j1 = Math.min(res - 1, Math.ceil((f.cz + outer + half) / cell));
+
+  for (let j = j0; j <= j1; j++) {
+    const wz = -half + j * cell;
+    for (let i = i0; i <= i1; i++) {
+      const wx = -half + i * cell;
+      const dx = wx - f.cx;
+      const dz = wz - f.cz;
+      const r = Math.hypot(dx, dz);
+      if (r < f.radius - reach || r > outer) continue;
+
+      // Where along the sweep this cell sits. Wrapped, so the arc may cross PI.
+      const t = wrapAngle(Math.atan2(dz, dx) - f.startAngle) / sweep;
+      if (t < 0 || t > 1) continue;
+
+      const k = j * res + i;
+      const ground = data[k];
+
+      let deck = Math.max(f.startY + (f.endY - f.startY) * t, ground + f.minClearance);
+      // Ride off the end onto the desert rather than off a cliff.
+      if (t > 1 - f.exitFade) {
+        const e = (t - (1 - f.exitFade)) / f.exitFade;
+        deck += (ground - deck) * smoothstep01(e);
+      }
+
+      const lift = deck - ground;
+      if (lift <= 0) continue;
+
+      const u = Math.abs(r - f.radius);
+      const shoulder = lift * f.shoulderRatio;
+      let target: number;
+      if (u <= f.rideHalfWidth) {
+        target = deck;
+      } else if (u <= f.rideHalfWidth + shoulder) {
+        // Straight bank down to whatever the ground is doing, so the drawn slope
+        // is exactly `1 / shoulderRatio` and never steeper.
+        target = deck - lift * ((u - f.rideHalfWidth) / shoulder);
+      } else {
+        continue;
+      }
+
+      if (target > data[k]) data[k] = target;
+      if (target - ground > 0.5) mark[k] = f.surface === 'dirt' ? 1 : 2;
+    }
+  }
+}
+
+/**
+ * Stamp a berm. Carved rather than raised: the ride line is *replaced* with a
+ * level band on the datum, and the bank grows out of the ground outside it.
+ *
+ * Replacement, not max, is the point. A turn has to be level under the wheels
+ * whatever it is crossing, or the line through it changes with the dune it
+ * happens to sit on — the same reason every other stamp blends to a target
+ * rather than adding to one.
+ */
+function applyBerm(hf: Heightfield, f: Berm) {
+  const { res, cell, half, data, mark } = hf;
+  const sweep = f.endAngle - f.startAngle;
+
+  const start = arcPoint(f, 0);
+  const startY = f.startY ?? f.baseY ?? hf.height(start.x, start.z);
+  const endY = f.endY ?? startY;
+
+  const outward = f.rideHalfWidth + f.bankRun + LATERAL_FADE;
+  const inward = f.rideHalfWidth + f.innerRun + LATERAL_FADE;
+  const outer = f.radius + outward;
+
+  const i0 = Math.max(0, Math.floor((f.cx - outer + half) / cell));
+  const i1 = Math.min(res - 1, Math.ceil((f.cx + outer + half) / cell));
+  const j0 = Math.max(0, Math.floor((f.cz - outer + half) / cell));
+  const j1 = Math.min(res - 1, Math.ceil((f.cz + outer + half) / cell));
+
+  for (let j = j0; j <= j1; j++) {
+    const wz = -half + j * cell;
+    for (let i = i0; i <= i1; i++) {
+      const wx = -half + i * cell;
+      const dx = wx - f.cx;
+      const dz = wz - f.cz;
+      const r = Math.hypot(dx, dz);
+      if (r < f.radius - inward || r > outer) continue;
+
+      const t = wrapAngle(Math.atan2(dz, dx) - f.startAngle) / sweep;
+      if (t < 0 || t > 1) continue;
+
+      // Signed offset from the ride line: positive is outward, up the bank.
+      const u = r - f.radius;
+      const deck = startY + (endY - startY) * t;
+
+      let target = deck;
+      let lat = 1;
+      if (u > f.rideHalfWidth) {
+        const b = u - f.rideHalfWidth;
+        // Steepening with height, so the top of the bank is a lip rather than the
+        // same slope you were already on. Held flat past `bankRun` so the fade has
+        // level ground to blend from instead of a ridge.
+        target = deck + f.bankHeight * Math.pow(Math.min(1, b / f.bankRun), 1.7);
+        if (b > f.bankRun) lat = 1 - smoothstep01((b - f.bankRun) / LATERAL_FADE);
+      } else if (u < -f.rideHalfWidth) {
+        const b = -u - f.rideHalfWidth;
+        if (b > f.innerRun) lat = 1 - smoothstep01((b - f.innerRun) / LATERAL_FADE);
+      }
+
+      // Both ends fade, because a berm has a straight on either side of it and
+      // neither one is its own approach corridor.
+      let lon = 1;
+      if (t < f.endFade) lon = smoothstep01(t / f.endFade);
+      else if (t > 1 - f.endFade) lon = smoothstep01((1 - t) / f.endFade);
+
+      const w = lat * lon;
+      if (w <= 0.001) continue;
+
+      const k = j * res + i;
+      data[k] += (target - data[k]) * w;
+      if (w > 0.45) mark[k] = f.surface === 'stone' ? 2 : 1;
+    }
+  }
+}
+
 export function applyFeature(hf: Heightfield, f: Feature) {
   if (f.kind === 'motte') {
     applyMotte(hf, f);
     return;
   }
+
+  if (f.kind === 'causeway') {
+    applyCauseway(hf, f);
+    return;
+  }
+
+  if (f.kind === 'berm') {
+    applyBerm(hf, f);
+    return;
+  }
+
 
   const base = f.baseY ?? hf.height(f.x, f.z);
 

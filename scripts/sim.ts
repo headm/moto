@@ -15,9 +15,10 @@ import * as THREE from 'three';
 import { T } from '../src/core/tunables';
 import type { InputState } from '../src/core/input';
 import { Heightfield } from '../src/world/heightfield';
-import { applyPark, featureLipHeight, lipCurvature, launchRange } from '../src/world/ramps';
-import type { Kicker, Tabletop } from '../src/world/ramps';
-import { PARK, SETPIECE } from '../src/world/park';
+import { applyPark, featureLipHeight, featureLength, lipCurvature, launchRange } from '../src/world/ramps';
+import type { Kicker, Causeway, Berm, Gap, Jump, Feature } from '../src/world/ramps';
+import { arcPoint } from '../src/world/ramps';
+import { PARK, SETPIECE, TRACKS, SIDE_FEATURES, RIDEABLE, HANDOVERS } from '../src/world/park';
 import { createBikeState, resetBike, groundSpeed, type BikeState } from '../src/bike/state';
 import { stepBike } from '../src/bike/physics';
 import { Tricks, type TrickTally } from '../src/game/tricks';
@@ -55,6 +56,13 @@ function launchableFraction(hf: Heightfield, v: number): number {
     }
   }
   return hits / total;
+}
+
+/** Fraction along an arc sweep, wrapped, clamped to [0, 1]. */
+function wrap01(angle: number, start: number, end: number): number {
+  const d = Math.atan2(Math.sin(angle - start), Math.cos(angle - start));
+  const t = d / (end - start);
+  return Math.max(0, Math.min(1, t));
 }
 
 let failures = 0;
@@ -597,7 +605,7 @@ console.log(
   applyPark(parkField, PARK);
 
   /** Start on the feature's approach at a given speed and ride straight over it. */
-  function ride(f: Kicker | Tabletop, speed: number, boost: boolean) {
+  function ride(f: Jump, speed: number, boost: boolean) {
     const s = createBikeState();
     resetBike(s, parkField);
 
@@ -659,11 +667,15 @@ console.log(
   // conversation all refer to the same thing.
   const numbered = PARK.map((f, i) => ({ f, n: i + 1 }));
   const jumps = numbered.filter(
-    (e): e is { f: Kicker | Tabletop; n: number } =>
-      e.f.kind === 'kicker' || e.f.kind === 'tabletop',
+    (e): e is { f: Jump; n: number } =>
+      e.f.kind === 'kicker' || e.f.kind === 'tabletop' || e.f.kind === 'gap',
   );
 
-  console.log('        park: ' + numbered.map((e) => `#${e.n} ${e.f.name}`).join(', ') + '\n');
+  console.log(
+    '        park: ' +
+      numbered.map((e) => `#${e.n} ${e.f.name}`).join(', ').replace(/(.{88}) /g, '$1\n              ') +
+      '\n',
+  );
 
   for (const { f, n } of jumps) {
     const H = featureLipHeight(f);
@@ -685,7 +697,7 @@ console.log(
     // The ballistic range formula needs a launch angle, which a `crest` face does
     // not have — it throws you off convex curvature, not off an angled lip. Printing
     // "0-0 m" there would look like a bug rather than an inapplicable measure.
-    const crest = f.kind === 'kicker' && f.face === 'crest';
+    const crest = f.kind !== 'tabletop' && f.face === 'crest';
     console.log(
       `        boosted: ${boosted.peakAir.toFixed(2)} s air, ${boosted.peakHeight.toFixed(1)} m up` +
         (crest
@@ -718,6 +730,337 @@ console.log(
     doNothing.every((d) => d.band !== 'bad'),
     doNothing.map((d) => `#${d.n}=${d.band}`).join(' ') + '  (boost-only features excluded)',
   );
+
+  // --- the pits and plateaus are actually there ----------------------------
+  // A `gap` is defined by two heights that are easy to author and easy to lose:
+  // the pit floor you have to clear, and the plateau you land on. Both can be
+  // silently erased, because an approach corridor declines to *cut* into another
+  // feature's dirt but will happily *fill* it — so a pit that ends up inside the
+  // next feature's run-in is levelled flat, and the feature becomes a speed bump
+  // with a name. This measures the ground rather than trusting the parameters.
+  {
+    const gaps = numbered.filter((e): e is { f: Gap; n: number } => e.f.kind === 'gap');
+    const report: string[] = [];
+    const backReport: string[] = [];
+    let ok = true;
+    let backOk = true;
+    const nrm = new THREE.Vector3();
+    for (const { f, n } of gaps) {
+      const fx = Math.sin(f.yaw);
+      const fz = Math.cos(f.yaw);
+      const base = f.baseY!;
+      const at = (u: number) => parkField.height(f.x + fx * u, f.z + fz * u) - base;
+
+      // The back side has to carry the lip *plus* the pit, which is the sizing
+      // trap in this shape: `back` looks right against a lip of two metres and is
+      // a cliff once three more are dug out under it. Smoothstep peaks at 1.5x its
+      // average slope, so a 4.6 m drop over 5 m draws as 65 degrees — past both
+      // the mesh's 45 degree limit and `climbSlopeDeg`, which is the exact recipe
+      // for the wall-trampoline in §10.16.
+      let backSlope = 0;
+      for (let u = f.length; u <= f.length + f.back; u += 0.5) {
+        parkField.normal(f.x + fx * u, f.z + fz * u, nrm);
+        backSlope = Math.max(backSlope, (Math.acos(Math.min(1, Math.abs(nrm.y))) * 180) / Math.PI);
+      }
+      if (backSlope >= 45) backOk = false;
+      backReport.push(`#${n} ${backSlope.toFixed(0)}`);
+
+      // Middle of the void, and a third of the way along the level plateau.
+      const pitU = f.length + f.back + f.pit * 0.5;
+      const landU = f.length + f.back + f.pit + f.rise + f.landing * 0.3;
+      const pit = at(pitU);
+      const land = at(landU);
+      const pitOk = Math.abs(pit - f.pitY) < 0.6;
+      const landOk = Math.abs(land - f.landY) < 0.6;
+      if (!pitOk || !landOk) ok = false;
+      report.push(
+        `#${n} pit ${pit.toFixed(1)}/${f.pitY}${pitOk ? '' : ' !'} ` +
+          `land ${land.toFixed(1)}/${f.landY}${landOk ? '' : ' !'}`,
+      );
+    }
+    check('every pit and plateau survived stamping', ok, report.join('  '));
+    check(
+      'and no pit is dug into a cliff',
+      backOk,
+      `steepest back side per feature: ${backReport.join(' ')} deg (mesh limit 45)`,
+    );
+  }
+  console.log('');
+}
+
+// --- 8b. the banked turns --------------------------------------------------
+// A berm is the one feature that is not judged by how far it throws you. What it
+// has to do is let a corner be taken without giving the speed back, and it has to
+// stay inside the two slope limits everything else here obeys: past ~45 degrees
+// the mesh draws something other than what the bike hits, and past
+// `susp.climbSlopeDeg` the suspension stops pushing the bike up it at all.
+{
+  const parkField = new Heightfield(T.world);
+  applyPark(parkField, PARK);
+  const berms = PARK.filter((f): f is Berm => f.kind === 'berm');
+
+  const nrm = new THREE.Vector3();
+  for (const b of berms) {
+    // --- the bank is drawable ------------------------------------------------
+    let maxSlope = 0;
+    for (let t = 0.05; t <= 0.95; t += 0.05) {
+      const p = arcPoint(b, t);
+      const a = Math.atan2(p.z - b.cz, p.x - b.cx);
+      for (let u = -b.innerRun; u <= b.rideHalfWidth + b.bankRun + 6; u += 1) {
+        parkField.normal(p.x + Math.cos(a) * u, p.z + Math.sin(a) * u, nrm);
+        maxSlope = Math.max(maxSlope, (Math.acos(Math.min(1, Math.abs(nrm.y))) * 180) / Math.PI);
+      }
+    }
+    check(
+      `${b.name}: its bank stays drawable`,
+      maxSlope < 45,
+      `steepest ${maxSlope.toFixed(0)} deg across the section (mesh limit 45, ` +
+        `climbSlopeDeg ${T.susp.climbSlopeDeg})`,
+    );
+
+    // --- and it can be taken without losing the run --------------------------
+    // Driven the way a rider takes a corner: aim a little further round, throttle
+    // when below the entry speed. What is measured is how much of the sweep gets
+    // finished and what is left at the exit.
+    const entry = 24;
+    const s = createBikeState();
+    resetBike(s, parkField);
+    const p0 = arcPoint(b, 0);
+    // Start on the straight before the turn so the entry is a real one.
+    s.pos.set(p0.x - Math.sin(p0.yaw) * 20, 0, p0.z - Math.cos(p0.yaw) * 20);
+    s.pos.y = parkField.height(s.pos.x, s.pos.z) + T.susp.restHeight;
+    s.yaw = p0.yaw;
+    s.vel.set(Math.sin(p0.yaw) * entry, 0, Math.cos(p0.yaw) * entry);
+    const input = idle();
+
+    let reached = 0;
+    let fellOff = false;
+    for (let i = 0; i < 120 * 20; i++) {
+      const ahead = arcPoint(b, Math.min(1, reached + 0.12));
+      const want = Math.atan2(ahead.x - s.pos.x, ahead.z - s.pos.z);
+      const err = Math.atan2(Math.sin(want - s.yaw), Math.cos(want - s.yaw));
+      input.steer = Math.max(-1, Math.min(1, -err * 2.5));
+      input.throttle = groundSpeed(s) < entry ? 1 : 0;
+      stepBike(s, parkField, input, STEP);
+      if (!finite(s)) break;
+
+      const r = Math.hypot(s.pos.x - b.cx, s.pos.z - b.cz);
+      const t = wrap01(
+        Math.atan2(s.pos.z - b.cz, s.pos.x - b.cx),
+        b.startAngle,
+        b.endAngle,
+      );
+      // Off the top of the bank or down onto the flat inside both count as lost.
+      if (t > 0.05 && Math.abs(r - b.radius) > b.rideHalfWidth + b.bankRun) fellOff = true;
+      if (t > reached) reached = t;
+      if (reached > 0.97) break;
+    }
+    const exit = groundSpeed(s);
+    check(
+      `${b.name}: holds speed round the corner`,
+      reached > 0.9 && !fellOff && exit > entry * 0.7,
+      `${(reached * 100).toFixed(0)}% of the sweep, ${(entry * 3.6).toFixed(0)} -> ` +
+        `${(exit * 3.6).toFixed(0)} km/h${fellOff ? ', LEFT THE BANK' : ''}`,
+    );
+  }
+  console.log('');
+}
+
+// --- 8c. the tracks, ridden end to end -------------------------------------
+// Every check so far measures one feature, started on its own approach at a
+// speed handed to it. That is the right way to ask "does this ramp work" and it
+// cannot answer the question the park exists for: ride the *whole* line and does
+// one landing put you on the run-up to the next, close enough that the combo is
+// still alive when you leave the ground again?
+//
+// The multiplier resets after `comboWindow` seconds on the ground, so the answer
+// is a distance divided by a speed, and it is not guessable from the feature
+// list. This rides each stretch with a waypoint autopilot — steer at the next
+// point, throttle, boost whenever it is off cooldown — and reports what a run is
+// actually worth.
+{
+  const parkField = new Heightfield(T.world);
+  applyPark(parkField, PARK);
+  const byName = new Map(PARK.map((f) => [f.name, f]));
+
+  // Coverage first: a feature missing from every line is a feature nothing rides.
+  {
+    const listed = new Set<string>([...TRACKS.flatMap((t) => t.line), ...SIDE_FEATURES]);
+    const missing = PARK.filter((f) => !listed.has(f.name)).map((f) => f.name);
+    const unknown = [...listed].filter((n) => !byName.has(n));
+    check(
+      'every feature is on a named track',
+      missing.length === 0 && unknown.length === 0,
+      missing.length || unknown.length
+        ? `unlisted: ${missing.join(', ') || 'none'}; unknown: ${unknown.join(', ') || 'none'}`
+        : `${PARK.length} features across ${TRACKS.length} tracks ` +
+          `(${TRACKS.map((t) => `${t.name} ${t.line.length}`).join(', ')})`,
+    );
+  }
+
+  /** The line through a feature, as points to steer at. */
+  function waypoints(f: Feature): { x: number; z: number }[] {
+    if (f.kind === 'berm' || f.kind === 'causeway') {
+      return [0.15, 0.4, 0.65, 0.9, 1].map((t) => arcPoint(f, t));
+    }
+    const fx = Math.sin(f.yaw);
+    const fz = Math.cos(f.yaw);
+    // The origin, then a point past the face — enough to hold a straight line and
+    // few enough that the autopilot never steers backwards to hit one.
+    const span = featureLength(f);
+    return [
+      { x: f.x, z: f.z },
+      { x: f.x + fx * span * 0.7, z: f.z + fz * span * 0.7 },
+    ];
+  }
+
+  // --- and the three of them are one lap ----------------------------------
+  // Each track ending where the next begins is what turns three tracks into a
+  // circuit, and it is a claim about two things being in the same place — which
+  // is exactly the kind of claim that rots silently when either end is retuned.
+  {
+    /** A feature's line, densified so a distance to it means something. */
+    function dense(f: Feature): { x: number; z: number }[] {
+      const pts = waypoints(f);
+      const out: { x: number; z: number }[] = [];
+      for (let i = 0; i < pts.length - 1; i++) {
+        const a = pts[i];
+        const b = pts[i + 1];
+        const steps = Math.max(1, Math.ceil(Math.hypot(b.x - a.x, b.z - a.z) / 4));
+        for (let k = 0; k < steps; k++) {
+          out.push({ x: a.x + ((b.x - a.x) * k) / steps, z: a.z + ((b.z - a.z) * k) / steps });
+        }
+      }
+      out.push(pts[pts.length - 1]);
+      return out;
+    }
+
+    /** Where a line stops: the far end of its last feature. */
+    function lineEnd(track: readonly string[]): { x: number; z: number } {
+      const f = byName.get(track[track.length - 1])!;
+      if (f.kind === 'berm' || f.kind === 'causeway') return arcPoint(f, 1);
+      return {
+        x: f.x + Math.sin(f.yaw) * featureLength(f),
+        z: f.z + Math.cos(f.yaw) * featureLength(f),
+      };
+    }
+
+    const report: string[] = [];
+    let joined = true;
+    for (const h of HANDOVERS) {
+      const from = TRACKS.find((t) => t.name === h.from)!;
+      const end = lineEnd(from.line);
+      let gap: number;
+      if (h.to === null) {
+        gap = Math.hypot(end.x - parkField.spawn.x, end.z - parkField.spawn.z);
+      } else {
+        const to = TRACKS.find((t) => t.name === h.to)!;
+        gap = Infinity;
+        for (const name of to.line) {
+          const f = byName.get(name)!;
+          if (f.kind === 'motte') {
+            // A mound is ridden from anywhere on its flank, so reaching its outer
+            // radius *is* reaching it. Measuring to the centre instead would call
+            // a run that ends on the skirt a 99 m miss.
+            gap = Math.min(gap, Math.max(0, Math.hypot(end.x - f.x, end.z - f.z) - f.outerRadius));
+            continue;
+          }
+          for (const p of dense(f)) {
+            gap = Math.min(gap, Math.hypot(end.x - p.x, end.z - p.z));
+          }
+        }
+      }
+      if (gap > h.within) joined = false;
+      report.push(`${h.from} -> ${h.to ?? 'the spawn pad'} ${gap.toFixed(0)}m/${h.within}`);
+    }
+    check('the three tracks close into one lap', joined, report.join(', '));
+  }
+
+  for (const run of RIDEABLE) {
+    const feats = run.line.map((n) => byName.get(n)!);
+    const pts = feats.flatMap(waypoints);
+    const first = feats[0];
+    const fx = Math.sin(first.yaw);
+    const fz = Math.cos(first.yaw);
+
+    const s = createBikeState();
+    resetBike(s, parkField);
+    const lead = first.approach + 6;
+    s.pos.set(first.x - fx * lead, 0, first.z - fz * lead);
+    s.pos.y = parkField.height(s.pos.x, s.pos.z) + T.susp.restHeight;
+    s.yaw = first.yaw;
+    s.vel.set(fx * 22, 0, fz * 22);
+
+    const tricks = new Tricks();
+    const score = new Scoring();
+    const input = idle();
+
+    let wp = 0;
+    let landings = 0;
+    let bestCombo = 0;
+    let longestGround = 0;
+    let ground = 0;
+    let airborneTotal = 0;
+    // The last feature's flight finishes *past* the last waypoint, so the run has
+    // to carry on for a few seconds after the line runs out — otherwise the run
+    // ends in mid-air and the final landing is never scored.
+    let tail = 4;
+
+    for (let i = 0; i < 120 * 120; i++) {
+      while (
+        wp < pts.length &&
+        Math.hypot(pts[wp].x - s.pos.x, pts[wp].z - s.pos.z) < 20
+      ) {
+        wp++;
+      }
+      if (wp < pts.length) {
+        const want = Math.atan2(pts[wp].x - s.pos.x, pts[wp].z - s.pos.z);
+        const err = Math.atan2(Math.sin(want - s.yaw), Math.cos(want - s.yaw));
+        input.steer = Math.max(-1, Math.min(1, -err * 2.2));
+      } else {
+        input.steer = 0;
+        tail -= STEP;
+        if (tail <= 0) break;
+      }
+      input.throttle = 1;
+      input.boost = s.grounded && s.boostRemaining <= 0 && s.boostCooldown <= 0;
+
+      stepBike(s, parkField, input, STEP);
+      if (!finite(s)) break;
+      tricks.step(s, STEP);
+      score.step(s, tricks);
+      if (score.event) {
+        landings++;
+        bestCombo = Math.max(bestCombo, score.event.multiplier);
+        score.event = null;
+      }
+
+      if (s.grounded) {
+        ground += STEP;
+        // Only after the first landing: the harness drops the bike onto the
+        // approach some way back from the first lip, and that run-in is the
+        // harness's, not the track's.
+        if (landings > 0) longestGround = Math.max(longestGround, ground);
+      } else {
+        ground = 0;
+        airborneTotal += STEP;
+      }
+    }
+
+    const done = wp / pts.length;
+    // The combo is the whole point: a track that scores every jump at x1 is a
+    // list of ramps, not a run. Three consecutive clean landings is the floor —
+    // below that the gaps are too long for the window and the line needs
+    // tightening, not the scoring loosening.
+    check(
+      `${run.name}: rides as one run`,
+      done > 0.9 && landings >= 3 && bestCombo >= 3,
+      `${(done * 100).toFixed(0)}% of the line, ${landings} scored landing(s), ` +
+        `best combo x${bestCombo}, ${score.total.toLocaleString('en-US')} points, ` +
+        `${airborneTotal.toFixed(1)} s airborne, longest spell on the ground ` +
+        `${longestGround.toFixed(1)} s (window ${T.score.comboWindow} s)`,
+    );
+  }
   console.log('');
 }
 
@@ -1278,6 +1621,175 @@ console.log(
       monotonic && Number.isFinite(score.total) && score.total >= 0,
       `${score.total.toLocaleString('en-US')} points over ${landings} scored landing(s), ` +
         `combo x${score.multiplier}` + (bestTrick ? `, last trick "${bestTrick}"` : ''),
+    );
+  }
+  console.log('');
+}
+
+// --- 12. the ribbon ---------------------------------------------------------
+{
+  const parkField = new Heightfield(T.world);
+  applyPark(parkField, PARK);
+  const bare = new Heightfield(T.world);
+
+  const rib = PARK.find((f) => f.name === 'the ribbon') as Causeway;
+  const farPeak = PARK.find((f) => f.name === 'the far peak')!;
+  if (rib.kind !== 'causeway') throw new Error('the ribbon changed kind');
+  if (farPeak.kind !== 'motte') throw new Error('the far peak changed kind');
+
+  const deckAt = (t: number) => {
+    const p = arcPoint(rib, t);
+    return parkField.height(p.x, p.z);
+  };
+
+  // --- it is actually a raised ribbon, and drawable ------------------------
+  {
+    const n = new THREE.Vector3();
+    let minLift = Infinity;
+    let maxSlope = 0;
+    // Stop before the exit fade, where the deck is *meant* to come down to meet
+    // the desert so you can ride off the end.
+    const last = 1 - rib.exitFade - 0.02;
+    for (let t = 0.02; t <= last; t += 0.02) {
+      const p = arcPoint(rib, t);
+      minLift = Math.min(minLift, parkField.height(p.x, p.z) - bare.height(p.x, p.z));
+      // Sample across the ribbon's *own* cross-section only. Reaching wider picks
+      // up whatever it happens to be crossing rather than the ribbon itself.
+      const lift = parkField.height(p.x, p.z) - bare.height(p.x, p.z);
+      const span = rib.rideHalfWidth + lift * rib.shoulderRatio;
+      for (let u = -span; u <= span; u += 1) {
+        const ox = Math.cos(Math.atan2(p.z - rib.cz, p.x - rib.cx)) * u;
+        const oz = Math.sin(Math.atan2(p.z - rib.cz, p.x - rib.cx)) * u;
+        parkField.normal(p.x + ox, p.z + oz, n);
+        maxSlope = Math.max(maxSlope, (Math.acos(Math.min(1, Math.abs(n.y))) * 180) / Math.PI);
+      }
+    }
+    check(
+      'the ribbon stands clear of the desert',
+      minLift > 1.5,
+      `lowest point of the deck is ${minLift.toFixed(1)} m above natural ground ` +
+        `(measured to t=${(1 - rib.exitFade).toFixed(2)}, where the exit ramp begins)`,
+    );
+    // Both engine limits at once: past ~45 deg the mesh draws a face as something
+    // other than what the bike hits, and past climbSlopeDeg the suspension stops
+    // pushing the bike up it at all.
+    check(
+      'and its banks stay drawable',
+      maxSlope < 45,
+      `steepest bank ${maxSlope.toFixed(0)} deg (mesh limit 45, ` +
+        `climbSlopeDeg ${T.susp.climbSlopeDeg}, by design ` +
+        `${((Math.atan(1 / rib.shoulderRatio) * 180) / Math.PI).toFixed(0)})`,
+    );
+  }
+
+  // --- the jump off the far peak reaches it --------------------------------
+  {
+    const start = arcPoint(rib, 0);
+    const gap = Math.hypot(start.x - farPeak.x, start.z - farPeak.z) - farPeak.innerRadius;
+    const hits: number[] = [];
+    const report: string[] = [];
+
+    for (const speed of [14, 18, 22, 26, 30]) {
+      const s = createBikeState();
+      resetBike(s, parkField);
+      // Run at the summit rim heading -X, over #14, the way you arrive off the
+      // #9 gap jump.
+      s.pos.set(farPeak.x + farPeak.innerRadius - 4, 0, farPeak.z);
+      s.pos.y = parkField.height(s.pos.x, s.pos.z) + T.susp.restHeight;
+      s.yaw = -Math.PI / 2;
+      s.vel.set(-speed, 0, 0);
+      const input = idle();
+      input.throttle = 1;
+      let airborne = false;
+      let landedR = 0;
+      let onSweep = false;
+      for (let i = 0; i < 120 * 10; i++) {
+        const wasGrounded = s.grounded;
+        stepBike(s, parkField, input, STEP);
+        if (!finite(s)) break;
+        if (wasGrounded && !s.grounded) airborne = true;
+        if (airborne && s.grounded) {
+          landedR = Math.hypot(s.pos.x - rib.cx, s.pos.z - rib.cz);
+          // Being at the right radius is not enough — the arc has to actually be
+          // there. Outside the sweep you are on open desert at exactly the radius
+          // the ribbon would have had.
+          onSweep =
+            wrap01(Math.atan2(s.pos.z - rib.cz, s.pos.x - rib.cx), rib.startAngle, rib.endAngle) >
+              0 &&
+            s.pos.y > bare.height(s.pos.x, s.pos.z) + 1;
+          break;
+        }
+      }
+      // Signed: negative is short of the ribbon, positive is past it.
+      const off = landedR - rib.radius;
+      if (onSweep && Math.abs(off) < rib.rideHalfWidth) hits.push(speed);
+      report.push(`${speed}:${onSweep ? `${off > 0 ? '+' : ''}${off.toFixed(0)}` : 'off'}`);
+    }
+
+    check(
+      'the far peak can be jumped onto the ribbon',
+      hits.length >= 2,
+      `${gap.toFixed(0)} m gap; lands on it at ${hits.join(', ') || 'no'} m/s ` +
+        `(metres short/past the ribbon by speed: ${report.join(' ')})`,
+    );
+  }
+
+  // --- and it can be ridden round ------------------------------------------
+  {
+    let bestT = 0;
+    let bestSpeed = 0;
+    for (const speed of [14, 18, 22, 26]) {
+      const s = createBikeState();
+      resetBike(s, parkField);
+      const p0 = arcPoint(rib, 0.02);
+      s.pos.set(p0.x, parkField.height(p0.x, p0.z) + T.susp.restHeight, p0.z);
+      s.yaw = p0.yaw;
+      s.vel.set(Math.sin(p0.yaw) * speed, 0, Math.cos(p0.yaw) * speed);
+      const input = idle();
+      let reached = 0;
+      for (let i = 0; i < 120 * 40; i++) {
+        // Aim a little way further along the ribbon, like a rider would.
+        const ahead = arcPoint(rib, Math.min(1, reached + 0.06));
+        const want = Math.atan2(ahead.x - s.pos.x, ahead.z - s.pos.z);
+        const err = Math.atan2(Math.sin(want - s.yaw), Math.cos(want - s.yaw));
+        input.steer = Math.max(-1, Math.min(1, -err * 2.5));
+        input.throttle = groundSpeed(s) < speed ? 1 : 0;
+        stepBike(s, parkField, input, STEP);
+        if (!finite(s)) break;
+        const off = Math.abs(Math.hypot(s.pos.x - rib.cx, s.pos.z - rib.cz) - rib.radius);
+        const t = wrap01(
+          Math.atan2(s.pos.z - rib.cz, s.pos.x - rib.cx),
+          rib.startAngle,
+          rib.endAngle,
+        );
+        if (off < rib.rideHalfWidth + 3 && t > reached) reached = t;
+        // Fallen off the side and down to the desert.
+        if (s.grounded && s.pos.y < deckAt(Math.min(0.98, reached)) - 4) break;
+        if (reached > 0.97) break;
+      }
+      if (reached > bestT) {
+        bestT = reached;
+        bestSpeed = speed;
+      }
+    }
+    check(
+      'the ribbon can be ridden round without falling off',
+      bestT > 0.9,
+      `${(bestT * 100).toFixed(0)}% of the sweep at ${bestSpeed} m/s`,
+    );
+  }
+
+  // --- it points you home --------------------------------------------------
+  {
+    const end = arcPoint(rib, 1);
+    const toSpawn = Math.atan2(0 - end.x, 235 - end.z);
+    const err = Math.abs(
+      (Math.atan2(Math.sin(toSpawn - end.yaw), Math.cos(toSpawn - end.yaw)) * 180) / Math.PI,
+    );
+    check(
+      'and spits you out facing the spawn area',
+      err < 20,
+      `exit at (${end.x.toFixed(0)}, ${end.z.toFixed(0)}) heading ${err.toFixed(0)} deg off the spawn pad`,
     );
   }
   console.log('');
