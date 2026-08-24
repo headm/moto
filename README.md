@@ -152,6 +152,29 @@ combo — nothing was landed.
 Both trick detection and scoring are stepped at **physics rate, not render rate**. Two landings can
 fall inside one rendered frame, and the second must not erase the first's effect on the combo.
 
+## Scatter
+
+Instanced rocks and shrubs — 2,200 rocks and 600 shrubs, 57k triangles in two draw calls. The world
+was 1024 m of bare polygons, which is fine standing still and wrong at speed: with nothing between the
+bike and the horizon there is no parallax, so 40 km/h and 80 look the same out of the corner of your
+eye.
+
+They are placed from the terrain's **own** scrub noise field rather than one of their own, so shrubs
+grow where the ground is already tinted for them and rocks sit on the bare patches between. Keying
+them to separate noise produces bushes standing on bare dirt and boulders in the middle of vegetation,
+which reads as two systems that have never met.
+
+Nothing is placed on worked ground. `mark` is non-zero over every ramp, corridor, deck and landing pad
+in the park, and a shrub in the middle of a take-off is both ugly and a lie about where you can ride —
+`npm run sim` asserts that none of them land there. One detail-0 icosahedron serves both, chunky for a
+rock and squashed wide and low for a bush, so the whole system is one geometry and two materials.
+Dials are under `Scatter` in the tuning panel.
+
+**Worked dirt is darker than loose dirt**, which is the other half of reading the ground. In every
+theme the groomed colour used to be *lighter* than the desert around it — that reads perfectly on the
+top-down map and is invisible from behind the bike, where reading the line ahead is the whole of
+design pillar #4.
+
 ## Visual themes
 
 `H` → **Visual theme** switches the world's palette and lighting between four
@@ -560,7 +583,7 @@ big it all feels).
 
 ```
 src/core/      loop (fixed timestep), input, tunables
-src/world/     heightfield, terrain mesh, sky
+src/world/     heightfield, terrain mesh, scatter, sky, themes
 src/bike/      state, physics, landing bands, model
 src/game/      chase camera, boost fx, trick detection, scoring, time trial
 src/ui/        HUD, tuning panel

@@ -39,6 +39,13 @@ export interface Theme {
     packed: string;
     rock: string;
     scrub: string;
+    /**
+     * Worked dirt, and it has to be *darker* than `dirt` rather than a different
+     * hue at the same value. Every theme here originally had it lighter than or
+     * level with the loose stuff around it, which reads perfectly on a top-down
+     * map and is invisible from behind the bike — where reading the line ahead
+     * is the whole of design pillar #4.
+     */
     groomed: string;
     stone: string;
     stoneDark: string;
@@ -72,7 +79,7 @@ export const THEMES = {
       packed: '#8a6b45',
       rock: '#6b6560',
       scrub: '#6f7a44',
-      groomed: '#a06a42',
+      groomed: '#7d4f2a',
       stone: '#8d8779',
       stoneDark: '#5f5b52',
     },
@@ -108,7 +115,7 @@ export const THEMES = {
       packed: '#8a4a2e',
       rock: '#6e4a3a',
       scrub: '#5a4436',
-      groomed: '#b06844',
+      groomed: '#7a4028',
       stone: '#8a7568',
       stoneDark: '#5c4c42',
     },
@@ -143,7 +150,7 @@ export const THEMES = {
       packed: '#6e6b67',
       rock: '#55534f',
       scrub: '#5f5d59',
-      groomed: '#9a9791',
+      groomed: '#65625e',
       stone: '#a5a29b',
       stoneDark: '#63615c',
     },
@@ -184,7 +191,7 @@ export const THEMES = {
       packed: '#544e49',
       rock: '#2b2827',
       scrub: '#9c7833',
-      groomed: '#8f867b',
+      groomed: '#4a443e',
       stone: '#5a5550',
       stoneDark: '#302d2a',
     },

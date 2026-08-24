@@ -24,6 +24,7 @@ import { stepBike } from '../src/bike/physics';
 import { Tricks, type TrickTally } from '../src/game/tricks';
 import { Scoring, type ScoreEvent } from '../src/game/scoring';
 import { TimeTrial, formatClock } from '../src/game/timeTrial';
+import { createScatter } from '../src/world/scatter';
 
 const STEP = 1 / 120;
 
@@ -1894,6 +1895,44 @@ console.log(
       `exit at (${end.x.toFixed(0)}, ${end.z.toFixed(0)}) heading ${err.toFixed(0)} deg off the spawn pad`,
     );
   }
+  console.log('');
+}
+
+// --- 14. scatter -------------------------------------------------------------
+// Rocks and shrubs are judged by looking, but the part looking is bad at is
+// whether any of them landed somewhere they must not: `mark` covers every ramp,
+// corridor, deck and landing pad in the park, and a shrub in a take-off is both
+// ugly and a lie about where the bike can go.
+{
+  const parkField = new Heightfield(T.world);
+  applyPark(parkField, PARK);
+  const sc = createScatter(parkField);
+  const total = sc.counts.rocks + sc.counts.shrubs;
+
+  // 20 triangles apiece, on top of the terrain's own, against the 250k budget.
+  check(
+    'scatter fills the desert within budget',
+    total > 1500 && total * 20 < 90_000,
+    `${sc.counts.rocks} rocks + ${sc.counts.shrubs} shrubs = ` +
+      `${((total * 20) / 1000).toFixed(0)}k triangles in 2 draw calls`,
+  );
+
+  const m = new THREE.Matrix4();
+  let misplaced = 0;
+  for (const child of sc.group.children) {
+    const im = child as THREE.InstancedMesh;
+    for (let i = 0; i < im.count; i++) {
+      im.getMatrixAt(i, m);
+      const x = m.elements[12];
+      const z = m.elements[14];
+      const gi = Math.round((x + parkField.half) / parkField.cell);
+      const gj = Math.round((z + parkField.half) / parkField.cell);
+      if (parkField.mark[gj * parkField.res + gi] !== 0) misplaced++;
+      else if (parkField.waterLevelAt(x, z) !== null) misplaced++;
+    }
+  }
+  check('and none of it is on the track or in the water', misplaced === 0, `${misplaced} misplaced`);
+  sc.dispose();
   console.log('');
 }
 

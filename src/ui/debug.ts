@@ -105,6 +105,14 @@ export function buildGui(cb: DebugCallbacks): GUI {
   boost.add(T.boost, 'dustRate', 0, 200, 5);
   boost.add(T.boost, 'ignitionPunch', 0, 1, 0.05);
 
+  const scatter = gui.addFolder('Scatter').close();
+  scatter.add(T.scatter, 'on').onChange(cb.applyRender);
+  scatter.add(T.scatter, 'rockChance', 0, 1, 0.02).onChange(cb.regenerateWorld);
+  scatter.add(T.scatter, 'shrubChance', 0, 1, 0.02).onChange(cb.regenerateWorld);
+  scatter.add(T.scatter, 'spacing', 4, 30, 1).onChange(cb.regenerateWorld);
+  scatter.add(T.scatter, 'rockSize', 0.1, 2, 0.05).onChange(cb.regenerateWorld);
+  scatter.add(T.scatter, 'shrubSize', 0.1, 3, 0.05).onChange(cb.regenerateWorld);
+
   const score = gui.addFolder('Tricks & score').close();
   score.add(T.score, 'airGain', 0, 200, 1);
   score.add(T.score, 'flip', 0, 2000, 10);

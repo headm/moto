@@ -43,7 +43,7 @@ src/
     park.ts               the feature layout and set-piece props, as plain data
     props.ts              water, the burning loop, alligators, castle gatehouses
     terrainMesh.ts        heightfield → BufferGeometry with slope-based vertex colors
-    scatter.ts            instanced rocks, shrubs, banners, markers
+    scatter.ts            instanced rocks and shrubs, placed from the scrub field
     sky.ts                gradient sky, fog, sun, hemisphere light
   bike/
     state.ts              BikeState: position, velocity, yaw/pitch/roll, suspension, flags
@@ -556,7 +556,21 @@ Four things this turned up, all of which change the sketch below:
    swept to 106 degrees precisely so 168 m of straight lands on the south turn's own ride line, three
    quarters of the way round it. Authored separately, the two drift apart the first time either is
    retuned and the track quietly stops connecting.
-28. **A join is a measurement, and the obvious measurement is the wrong one.** The first version of the
+28. **Ambient fill is the value that decides whether a world has form — and cutting it is not the
+   fix.** Filed with the park findings because it was found *by* the park: the motte's four terraced
+   banks are real geometry, cost a page of reasoning about sine amplitudes and mesh quads, and could
+   not be seen at all. The cause was not the geometry, the colour bands or the mesh resolution — it
+   was `hemiIntensity` at 0.75 cancelling the low sun next to it, since a shape is only visible
+   because its faces catch different amounts of light. The sun's *azimuth* matters as much as its
+   elevation, for the same reason a raking light is what shows a relief: at 35 deg it lay nearly
+   along the ride line and lit every feature head-on.
+
+   Dropping the fill to 0.42 and raking the sun proved the diagnosis and was still reverted, because
+   it traded one readability problem for a worse one: large parts of the map went dark enough to be
+   unrideable, and this game is played *in* the world rather than looked at. Whatever eventually
+   fixes the flatness has to raise contrast without lowering the floor — moving the azimuth alone,
+   or lifting `hemiGround` so the fill is directional, rather than turning the fill down.
+29. **A join is a measurement, and the obvious measurement is the wrong one.** The first version of the
    handover check compared the end of one line to the nearest point of the next, which called a run
    finishing on the motte's skirt a 99 m miss — because a mound's "line" is its centre and it is
    ridden from anywhere on its flank. Reaching the outer radius *is* reaching it. Any check against a
@@ -660,8 +674,27 @@ Five things this turned up:
    a trick name reaches the rear wheel. Removed rather than left on a dial: the question is settled,
    and a branch kept "in case" is a branch that has to keep working.
 
-**M5 — It looks made (2–3 days).** Real bike model with animated wheels/forks, rider rig with pose
-blending, shadows, sky, fog, scatter props, particles (dirt kick-up, landing puff, dust trail).
+**M5 — It looks made (2–3 days). Started.** One piece landed early: **scatter**, instanced rocks and
+shrubs placed from the terrain's own scrub noise field so vegetation and its colour band agree, and
+never on `mark`ed ground so the park stays clear. It is the cheapest parallax there is, and parallax
+is what tells 40 km/h from 80 on ground with no texture on it. Groomed dirt was darkened at the same
+time, for the same reason in reverse: it was lighter than the desert around it in every theme, which
+reads on a map and vanishes from behind the bike.
+
+Four other things were tried here and **reverted**, which is worth recording so they are not retried
+blind:
+
+- **Raking the sun** (17 deg elevation, 75 deg azimuth, sky fill 0.42 against 28/35/0.75). It does
+  exactly what it promises — the motte's four terraced banks go from invisible to legible, and the
+  dunes gain form — but a low sun with little fill leaves large parts of the map in darkness you
+  cannot ride. The finding stands and the values do not: whatever fixes the flatness has to keep the
+  *shadowed* side of the world readable, which probably means keeping the fill and moving only the
+  azimuth, or lifting `hemiGround` rather than cutting `hemiIntensity`.
+- **Riding dust and landing puffs.** Worked, and cost one spawn rule on the pool boost already had.
+- **A posed rider** — the same six boxes on a hip pivot, leaning, tucking and bracing.
+- **An elliptical pond**, basin and surface both.
+
+Still to do: a real bike model, the rider rig and its pose tricks, and a sharper shadow near the bike.
 
 **M6 — It sounds made (1 day).** Engine RPM loop, wind, one-shots, mixing.
 
@@ -713,6 +746,7 @@ asserts the things that otherwise take an hour of riding to notice:
 - the three tracks close into one lap — each line's end is measured against the start of the next
 - a timed run lasts exactly its duration, banks nothing after the buzzer, stays open for a flight
   still in the air at zero, and never lowers its own best
+- scatter stays off the track and out of the water, and inside its triangle budget
 
 Every one of these was written because it caught something. Add to it rather than replacing it as
 the model grows.
